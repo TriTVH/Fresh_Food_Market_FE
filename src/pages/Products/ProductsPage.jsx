@@ -1,0 +1,373 @@
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  FiChevronRight,
+  FiChevronLeft,
+  FiSearch,
+  FiX,
+  FiSliders,
+} from 'react-icons/fi'
+import Header from '@/components/layout/Header/Header'
+import Footer from '@/components/layout/Footer/Footer'
+import ProductCard from '@/components/product/ProductCard/ProductCard'
+import { mockProducts } from '@/utils/mockData'
+
+// Utility function to remove Vietnamese accents
+const removeVietnameseAccents = (str) => {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+}
+
+function ProductsPage() {
+  const navigate = useNavigate()
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedPriceRanges, setSelectedPriceRanges] = useState([])
+  const [showFilters, setShowFilters] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const productsPerPage = 12
+
+  const categories = [
+    { id: 'all', name: 'Tất Cả Sản Phẩm' },
+    { id: 'vegetables', name: 'Rau, Củ & Nấm' },
+    { id: 'fruits', name: 'Trái Cây' },
+    { id: 'seafood', name: 'Thịt, Cá & Hải Sản' },
+    { id: 'dryFood', name: 'Thức Ăn Khô' },
+  ]
+
+  // Combine all products
+  const allProducts = useMemo(() => {
+    let products = []
+    if (selectedCategory === 'all') {
+      products = [
+        ...mockProducts.vegetables,
+        ...mockProducts.fruits,
+        ...mockProducts.seafood,
+        ...mockProducts.dryFood,
+      ]
+    } else {
+      products = mockProducts[selectedCategory] || []
+    }
+    return products
+  }, [selectedCategory])
+
+  // Price ranges
+  const priceRanges = [
+    { id: '0-50', label: 'Dưới 50.000đ', min: 0, max: 50000 },
+    { id: '50-100', label: '50.000đ - 100.000đ', min: 50000, max: 100000 },
+    { id: '100-150', label: '100.000đ - 150.000đ', min: 100000, max: 150000 },
+    { id: '150-200', label: '150.000đ - 200.000đ', min: 150000, max: 200000 },
+    { id: '200+', label: 'Trên 200.000đ', min: 200000, max: Infinity },
+  ]
+
+  // Filter products
+  const filteredProducts = useMemo(() => {
+    return allProducts.filter((product) => {
+      // Search filter
+      if (searchQuery) {
+        const query = removeVietnameseAccents(searchQuery.toLowerCase())
+        if (!removeVietnameseAccents(product.name.toLowerCase()).includes(query)) {
+          return false
+        }
+      }
+
+      // Price filter
+      if (selectedPriceRanges.length > 0) {
+        const matchesPrice = selectedPriceRanges.some((rangeId) => {
+          const range = priceRanges.find((r) => r.id === rangeId)
+          if (!range) return false
+          return product.price >= range.min && product.price < range.max
+        })
+        if (!matchesPrice) return false
+      }
+
+      return true
+    })
+  }, [allProducts, searchQuery, selectedPriceRanges])
+
+  const togglePriceRange = (rangeId) => {
+    setSelectedPriceRanges((prev) =>
+      prev.includes(rangeId) ? prev.filter((r) => r !== rangeId) : [...prev, rangeId]
+    )
+    setCurrentPage(1)
+  }
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setSelectedPriceRanges([])
+    setCurrentPage(1)
+  }
+
+  const hasActiveFilters = searchQuery || selectedPriceRanges.length > 0
+
+  const indexOfLastProduct = currentPage * productsPerPage
+  const indexOfFirstProduct = indexOfLastProduct - productsPerPage
+  const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct)
+
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage)
+
+  // Generate page numbers with ellipsis
+  const getPageNumbers = () => {
+    const pages = []
+
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i)
+      }
+    } else {
+      pages.push(1)
+
+      if (currentPage <= 4) {
+        for (let i = 2; i <= 5; i++) {
+          pages.push(i)
+        }
+        pages.push('...')
+        pages.push(totalPages)
+      } else if (currentPage >= totalPages - 3) {
+        pages.push('...')
+        for (let i = totalPages - 4; i <= totalPages; i++) {
+          pages.push(i)
+        }
+      } else {
+        pages.push('...')
+        pages.push(currentPage - 1)
+        pages.push(currentPage)
+        pages.push(currentPage + 1)
+        pages.push('...')
+        pages.push(totalPages)
+      }
+    }
+
+    return pages
+  }
+
+  const handlePageChange = (pageNumber) => {
+    setCurrentPage(pageNumber)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Header />
+      <div className="container mx-auto px-4 py-8">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm mb-6">
+          <button
+            onClick={() => navigate('/')}
+            className="text-gray-600 hover:text-[#75b06f] transition-colors"
+          >
+            Trang chủ
+          </button>
+          <FiChevronRight className="w-4 h-4 text-gray-400" />
+          <span className="text-gray-800 font-semibold">Sản phẩm</span>
+        </div>
+
+        {/* Page Header */}
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-2 sm:mb-3">
+            Sản Phẩm Fresh Market
+          </h1>
+          <p className="text-gray-600">Tươi ngon - An toàn - Chất lượng</p>
+        </div>
+
+        {/* Search Bar & Category Tabs */}
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm p-3 sm:p-4 mb-6 sm:mb-8">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-3 sm:gap-4">
+            {/* Search Bar */}
+            <div className="relative w-full lg:flex-1">
+              <FiSearch className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm sản phẩm..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#75b06f] focus:border-transparent"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <FiX className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Category Select Dropdown */}
+            <div className="w-full lg:w-auto min-w-[200px] sm:min-w-[250px]">
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  setSelectedCategory(e.target.value)
+                  setCurrentPage(1)
+                }}
+                className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base font-medium text-gray-700 bg-white border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#75b06f] focus:border-[#75b06f] hover:border-gray-300 transition-all cursor-pointer"
+              >
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Filters Sidebar */}
+          <div className="lg:w-80 flex-shrink-0">
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm p-4 sm:p-6 lg:sticky lg:top-4">
+              {/* Filter Header */}
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <div className="flex items-center gap-2">
+                  <FiSliders className="w-4 h-4 sm:w-5 sm:h-5 text-[#75b06f]" />
+                  <h3 className="font-bold text-base sm:text-lg">Bộ Lọc</h3>
+                </div>
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="lg:hidden text-gray-600"
+                >
+                  {showFilters ? <FiX className="w-5 h-5" /> : <FiSliders className="w-5 h-5" />}
+                </button>
+              </div>
+
+              <div className={`space-y-4 sm:space-y-6 ${showFilters ? 'block' : 'hidden lg:block'}`}>
+                {/* Active Filters */}
+                {hasActiveFilters && (
+                  <div className="pb-4 sm:pb-6 border-b border-gray-200">
+                    <button
+                      onClick={clearFilters}
+                      className="text-xs sm:text-sm text-[#75b06f] hover:text-[#5a9450] font-semibold flex items-center gap-2"
+                    >
+                      <FiX className="w-3 h-3 sm:w-4 sm:h-4" />
+                      Xóa tất cả bộ lọc
+                    </button>
+                  </div>
+                )}
+
+                {/* Price Filter */}
+                <div className="pt-4 sm:pt-6 border-t border-gray-200">
+                  <h4 className="font-semibold mb-3 text-sm sm:text-base text-gray-800">
+                    Khoảng Giá
+                  </h4>
+                  <div className="space-y-2">
+                    {priceRanges.map((range) => (
+                      <label
+                        key={range.id}
+                        className="flex items-center gap-2 sm:gap-3 cursor-pointer group"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedPriceRanges.includes(range.id)}
+                          onChange={() => togglePriceRange(range.id)}
+                          className="w-4 h-4 text-[#75b06f] border-gray-300 rounded focus:ring-[#75b06f]"
+                        />
+                        <span className="text-xs sm:text-sm text-gray-700 group-hover:text-gray-900">
+                          {range.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Products Grid */}
+          <div className="flex-1">
+            {/* Results Count */}
+            <div className="mb-4 sm:mb-6 flex items-center justify-between">
+              <p className="text-sm sm:text-base text-gray-600">
+                Tìm thấy{' '}
+                <span className="font-semibold text-gray-800">{filteredProducts.length}</span> sản
+                phẩm
+              </p>
+            </div>
+
+            {/* Products */}
+            {currentProducts.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {currentProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                  <FiSearch className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
+                </div>
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">
+                  Không tìm thấy sản phẩm
+                </h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-5 sm:mb-6">
+                  Vui lòng thử tìm kiếm với từ khóa khác hoặc điều chỉnh bộ lọc
+                </p>
+                <button
+                  onClick={clearFilters}
+                  className="bg-[#75b06f] text-white px-5 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg font-semibold hover:bg-[#5a9450] transition-colors"
+                >
+                  Xóa Bộ Lọc
+                </button>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center px-4 py-6 mt-6 sm:mt-8">
+                <div className="flex items-center gap-2">
+                  {/* Previous Button */}
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="w-10 h-10 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FiChevronLeft className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  {/* Page Numbers */}
+                  {getPageNumbers().map((pageNum, index) =>
+                    pageNum === '...' ? (
+                      <span
+                        key={`ellipsis-${index}`}
+                        className="w-10 h-10 flex items-center justify-center text-gray-400 font-medium"
+                      >
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`w-10 h-10 flex items-center justify-center rounded-lg font-medium transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-[#75b06f] text-white'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    )
+                  )}
+
+                  {/* Next Button */}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="w-10 h-10 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FiChevronRight className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <Footer />
+    </div>
+  )
+}
+
+export default ProductsPage

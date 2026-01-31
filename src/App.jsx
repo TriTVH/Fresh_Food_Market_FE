@@ -1,18 +1,46 @@
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from '@/context/AuthContext'
+import { CartProvider } from '@/context/CartContext'
+import Home from '@pages/Home/Home'
+import Login from '@pages/Auth/Login'
+import Register from '@pages/Auth/Register'
+import CartPage from '@pages/Cart/CartPage'
+import ProductsPage from '@pages/Products/ProductsPage'
+import AboutPage from '@pages/About/AboutPage'
+import ContactPage from '@pages/Contact/ContactPage'
+import NewsPage from '@pages/News/NewsPage'
+import OrdersPage from '@pages/Orders/OrdersPage'
+import TermsPage from '@pages/Terms/TermsPage'
+import PrivacyPolicyPage from '@pages/Privacy/PrivacyPolicyPage'
+import ShoppingGuidePage from '@pages/ShoppingGuide/ShoppingGuidePage'
+import ReturnPolicyPage from '@pages/ReturnPolicy/ReturnPolicyPage'
+import './styles/index.css'
 
 function App() {
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-gray-50">
-        <h1 className="text-4xl font-bold text-center py-20 text-primary-600">
-          Fresh Market - Ăn Sạch Sống Khỏe
-        </h1>
-        <p className="text-center text-gray-600">
-          Project structure is ready! Start building your components.
-        </p>
-      </div>
-    </BrowserRouter>
+    <AuthProvider>
+      <CartProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/chinh-sach-bao-mat" element={<PrivacyPolicyPage />} />
+            <Route path="/shopping-guide" element={<ShoppingGuidePage />} />
+            <Route path="/return-policy" element={<ReturnPolicyPage />} />
+          </Routes>
+        </BrowserRouter>
+      </CartProvider>
+    </AuthProvider>
   )
 }
 
 export default App
+
