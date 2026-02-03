@@ -28,5 +28,8 @@ dist-ssr
 .env.local
 .env.production
 
-# News pages (temporary - not ready for production)
-src/pages/News/
+# Temporary new files
+new
+new.*
+**/new
+**/new.*
