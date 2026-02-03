@@ -4,9 +4,10 @@ import Footer from '@/components/layout/Footer/Footer'
 
 function PrivacyPolicyPage() {
   return (
-    <div className="bg-gray-50 py-12">
+    <>
       <Header />
-      <div className="container mx-auto px-4 max-w-4xl">
+      <div className="bg-gray-50 py-12">
+        <div className="container mx-auto px-4 max-w-4xl">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-md p-8 mb-8">
           <div className="flex items-center gap-3 mb-4">
@@ -164,8 +165,9 @@ function PrivacyPolicyPage() {
           </div>
         </div>
       </div>
-      <Footer />
     </div>
+    <Footer />
+    </>
   )
 }
 

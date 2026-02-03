@@ -18,6 +18,7 @@ import TermsPage from '@pages/Terms/TermsPage'
 import PrivacyPolicyPage from '@pages/Privacy/PrivacyPolicyPage'
 import ShoppingGuidePage from '@pages/ShoppingGuide/ShoppingGuidePage'
 import ReturnPolicyPage from '@pages/ReturnPolicy/ReturnPolicyPage'
+import ScrollToTop from '@/components/common/ScrollToTop'
 import './styles/index.css'
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
     <AuthProvider>
       <CartProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
@@ -41,6 +43,7 @@ function App() {
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/chinh-sach-bao-mat" element={<PrivacyPolicyPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/shopping-guide" element={<ShoppingGuidePage />} />
             <Route path="/return-policy" element={<ReturnPolicyPage />} />
           </Routes>
