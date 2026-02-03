@@ -40,14 +40,18 @@ function Header() {
 
   const handleCategoryClick = (categoryId) => {
     if (categoryId === 'news') {
-      // Navigate to news page when implemented
-      console.log('Navigate to news')
+      navigate('/news')
+    } else if (categoryId === 'fruits') {
+      navigate('/fruits')
+    } else if (categoryId === 'vegetables') {
+      navigate('/vegetables')
+    } else if (categoryId === 'seafood') {
+      navigate('/seafood-meat')
+    } else if (categoryId === 'dryFood') {
+      navigate('/dry-food')
     } else {
-      // Scroll to category section
-      const element = document.getElementById(categoryId)
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' })
-      }
+      // For other categories, navigate to products page with category filter
+      navigate(`/products?category=${categoryId}`)
     }
     setMobileMenuOpen(false)
   }

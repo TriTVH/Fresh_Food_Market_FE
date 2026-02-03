@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiChevronRight,
@@ -22,9 +22,8 @@ const removeVietnameseAccents = (str) => {
     .replace(/Đ/g, 'D')
 }
 
-function ProductsPage() {
+function DryFoodPage() {
   const navigate = useNavigate()
-  const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedSubcategory, setSelectedSubcategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPriceRanges, setSelectedPriceRanges] = useState([])
@@ -32,6 +31,7 @@ function ProductsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
+  const productsPerPage = 12
 
   // ==================== API INTEGRATION (FUTURE) ====================
   // TODO: Uncomment when API is ready, then remove Mock Data section below
@@ -41,33 +41,35 @@ function ProductsPage() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetchProducts()
-  }, [selectedCategory, currentPage])
+    fetchDryFood()
+  }, [selectedSubcategory, currentPage])
 
-  const fetchProducts = async () => {
+  const fetchDryFood = async () => {
     try {
       setLoading(true)
       setError(null)
       
-      // Build query params
       const params = new URLSearchParams({
+        category: 'driedFood',
         page: currentPage,
         limit: productsPerPage,
       })
       
-      if (selectedCategory !== 'all') {
-        params.append('category', selectedCategory)
+      if (selectedSubcategory !== 'all') {
+        const subcatConfig = dryFoodSubcategories.find(s => s.id === selectedSubcategory)
+        if (subcatConfig?.values?.length > 0) {
+          subcatConfig.values.forEach(val => params.append('subcategory[]', val))
+        }
       }
       
-      // API Call
       const response = await fetch(`YOUR_API_BASE_URL/api/products?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch products')
+      if (!response.ok) throw new Error('Failed to fetch dry food')
       
       const data = await response.json()
-      setProducts(data.products || data) // Adjust based on your API response structure
+      setProducts(data.products || data)
       
     } catch (err) {
-      console.error('Error fetching products:', err)
+      console.error('Error fetching dry food:', err)
       setError(err.message)
     } finally {
       setLoading(false)
@@ -75,8 +77,8 @@ function ProductsPage() {
   }
   */
   // ==================== END API INTEGRATION ====================
-  const productsPerPage = 12
 
+  // Category options for dropdown
   const categories = [
     { id: 'all', name: 'Tất Cả Sản Phẩm', path: '/products' },
     { id: 'vegetables', name: 'Rau, Củ & Nấm', path: '/vegetables' },
@@ -85,28 +87,15 @@ function ProductsPage() {
     { id: 'dryFood', name: 'Thực Ăn Khô', path: '/dry-food' },
   ]
 
-  // Subcategories for Fruits
-  const fruitSubcategories = [
-    { id: 'all', name: 'Tất Cả' },
-    { id: 'vietnam', name: 'Trái Việt Nam' },
-    { id: 'imported', name: 'Trái Nhập Khẩu' },
+  // Subcategories for Dry Food
+  const dryFoodSubcategories = [
+    { id: 'all', name: 'Tất Cả', values: [] },
+    { id: 'dried-fruit', name: 'Trái Cây Sấy', values: ['dried-fruit'] },
+    { id: 'processed', name: 'Khô Chế Biến Sẵn', values: ['processed', 'dried-processed'] },
   ]
 
-  // Combine all products
-  const allProducts = useMemo(() => {
-    let products = []
-    if (selectedCategory === 'all') {
-      products = [
-        ...mockProducts.vegetables,
-        ...mockProducts.fruits,
-        ...mockProducts.meatSeafood,
-        ...mockProducts.driedFood,
-      ]
-    } else {
-      products = mockProducts[selectedCategory] || []
-    }
-    return products
-  }, [selectedCategory])
+  // Get only dry food products
+  const allDryFood = mockProducts.driedFood || []
 
   // Price ranges
   const priceRanges = [
@@ -119,7 +108,7 @@ function ProductsPage() {
 
   // Filter products
   const filteredProducts = useMemo(() => {
-    return allProducts.filter((product) => {
+    return allDryFood.filter((product) => {
       // Search filter
       if (searchQuery) {
         const query = removeVietnameseAccents(searchQuery.toLowerCase())
@@ -128,10 +117,13 @@ function ProductsPage() {
         }
       }
 
-      // Subcategory filter (only for fruits)
-      if (selectedCategory === 'fruits' && selectedSubcategory !== 'all') {
-        if (product.subcategory !== selectedSubcategory) {
-          return false
+      // Subcategory filter
+      if (selectedSubcategory !== 'all') {
+        const selectedTab = dryFoodSubcategories.find((s) => s.id === selectedSubcategory)
+        if (selectedTab && selectedTab.values.length > 0) {
+          if (!selectedTab.values.includes(product.subcategory)) {
+            return false
+          }
         }
       }
 
@@ -147,7 +139,7 @@ function ProductsPage() {
 
       return true
     })
-  }, [allProducts, searchQuery, selectedSubcategory, selectedCategory, selectedPriceRanges])
+  }, [allDryFood, searchQuery, selectedSubcategory, selectedPriceRanges])
 
   const togglePriceRange = (rangeId) => {
     setSelectedPriceRanges((prev) =>
@@ -223,18 +215,18 @@ function ProductsPage() {
             Trang chủ
           </button>
           <FiChevronRight className="w-4 h-4 text-gray-400" />
-          <span className="text-gray-800 font-semibold">Sản phẩm</span>
+          <span className="text-gray-800 font-semibold">Thực Phẩm Khô</span>
         </div>
 
         {/* Page Header */}
         <div className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-2 sm:mb-3">
-            Sản Phẩm Fresh Market
+            Thực Phẩm Khô Fresh Market
           </h1>
           <p className="text-gray-600">Tươi ngon - An toàn - Chất lượng</p>
         </div>
 
-        {/* Search Bar & Category Tabs */}
+        {/* Search Bar with Category Dropdown */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm p-3 sm:p-4 mb-6 sm:mb-8">
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
             {/* Search Input */}
@@ -242,7 +234,7 @@ function ProductsPage() {
               <FiSearch className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Tìm kiếm sản phẩm..."
+                placeholder="Tìm kiếm thực phẩm khô..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#75b06f] focus:border-transparent"
@@ -263,9 +255,7 @@ function ProductsPage() {
                 onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
                 className="w-full md:w-64 px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-white hover:bg-gray-50 transition-colors flex items-center justify-between gap-2"
               >
-                <span className="text-gray-700 font-medium">
-                  {categories.find((c) => c.id === selectedCategory)?.name || 'Tất Cả Sản Phẩm'}
-                </span>
+                <span className="text-gray-700 font-medium">Thực Ăn Khô</span>
                 <FiChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
               </button>
 
@@ -276,16 +266,11 @@ function ProductsPage() {
                     <button
                       key={category.id}
                       onClick={() => {
-                        if (category.path && category.id !== 'all') {
-                          navigate(category.path)
-                        } else {
-                          setSelectedCategory(category.id)
-                          setCurrentPage(1)
-                        }
+                        navigate(category.path)
                         setShowCategoryDropdown(false)
                       }}
                       className={`w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors first:rounded-t-xl last:rounded-b-xl ${
-                        category.id === selectedCategory ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                        category.id === 'dryFood' ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
                       }`}
                     >
                       {category.name}
@@ -297,29 +282,27 @@ function ProductsPage() {
           </div>
         </div>
 
-        {/* Subcategory Tabs (only show for Fruits) */}
-        {selectedCategory === 'fruits' && (
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm p-2 sm:p-3 mb-6 sm:mb-8">
-            <div className="flex gap-2 overflow-x-auto">
-              {fruitSubcategories.map((subcat) => (
-                <button
-                  key={subcat.id}
-                  onClick={() => {
-                    setSelectedSubcategory(subcat.id)
-                    setCurrentPage(1)
-                  }}
-                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium text-sm sm:text-base whitespace-nowrap transition-all ${
-                    selectedSubcategory === subcat.id
-                      ? 'bg-[#75b06f] text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {subcat.name}
-                </button>
-              ))}
-            </div>
+        {/* Subcategory Tabs */}
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm p-2 sm:p-3 mb-6 sm:mb-8">
+          <div className="flex gap-2 overflow-x-auto">
+            {dryFoodSubcategories.map((subcat) => (
+              <button
+                key={subcat.id}
+                onClick={() => {
+                  setSelectedSubcategory(subcat.id)
+                  setCurrentPage(1)
+                }}
+                className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium text-sm sm:text-base whitespace-nowrap transition-all ${
+                  selectedSubcategory === subcat.id
+                    ? 'bg-[#75b06f] text-white shadow-md'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {subcat.name}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Filters Sidebar */}
@@ -502,4 +485,4 @@ function ProductsPage() {
   )
 }
 
-export default ProductsPage
+export default DryFoodPage

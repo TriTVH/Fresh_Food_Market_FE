@@ -6,6 +6,10 @@ import Login from '@pages/Auth/Login'
 import Register from '@pages/Auth/Register'
 import CartPage from '@pages/Cart/CartPage'
 import ProductsPage from '@pages/Products/ProductsPage'
+import FruitsPage from '@pages/Fruits/FruitsPage'
+import VegetablesPage from '@pages/Vegetables/VegetablesPage'
+import SeafoodMeatPage from '@pages/SeafoodMeat/SeafoodMeatPage'
+import DryFoodPage from '@pages/DryFood/DryFoodPage'
 import AboutPage from '@pages/About/AboutPage'
 import ContactPage from '@pages/Contact/ContactPage'
 import NewsPage from '@pages/News/NewsPage'
@@ -27,6 +31,10 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/cart" element={<CartPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/fruits" element={<FruitsPage />} />
+            <Route path="/vegetables" element={<VegetablesPage />} />
+            <Route path="/seafood-meat" element={<SeafoodMeatPage />} />
+            <Route path="/dry-food" element={<DryFoodPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/news" element={<NewsPage />} />

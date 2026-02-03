@@ -27,3 +27,6 @@ dist-ssr
 .env
 .env.local
 .env.production
+
+# News pages (temporary - not ready for production)
+src/pages/News/
