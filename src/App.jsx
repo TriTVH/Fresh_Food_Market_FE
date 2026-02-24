@@ -18,6 +18,8 @@ import TermsPage from '@pages/Terms/TermsPage'
 import PrivacyPolicyPage from '@pages/Privacy/PrivacyPolicyPage'
 import ShoppingGuidePage from '@pages/ShoppingGuide/ShoppingGuidePage'
 import ReturnPolicyPage from '@pages/ReturnPolicy/ReturnPolicyPage'
+import AdminDashboard from '@pages/Admin/AdminDashboard'
+import SupplierDashboard from '@pages/Supplier/SupplierDashboard'
 import ScrollToTop from '@/components/common/ScrollToTop'
 import './styles/index.css'
 
@@ -46,6 +48,8 @@ function App() {
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/shopping-guide" element={<ShoppingGuidePage />} />
             <Route path="/return-policy" element={<ReturnPolicyPage />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/supplier" element={<SupplierDashboard />} />
           </Routes>
         </BrowserRouter>
       </CartProvider>

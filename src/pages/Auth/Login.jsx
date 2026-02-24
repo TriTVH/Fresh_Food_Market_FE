@@ -34,8 +34,10 @@ function Login() {
           role: account.role,
         })
         // Redirect based on role
-        if (account.role === 'admin' || account.role === 'supplier') {
-          navigate('/')
+        if (account.role === 'admin') {
+          navigate('/admin')
+        } else if (account.role === 'supplier') {
+          navigate('/supplier')
         } else {
           navigate('/')
         }

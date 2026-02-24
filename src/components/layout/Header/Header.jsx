@@ -168,7 +168,7 @@ function Header() {
                             className="flex items-center gap-2 w-full text-left px-4 py-3 text-purple-700 hover:bg-purple-50 transition-colors"
                             onClick={() => {
                               setUserMenuOpen(false)
-                              console.log('Navigate to admin dashboard')
+                              navigate('/admin')
                             }}
                           >
                             <FiGrid className="w-4 h-4" />
@@ -180,7 +180,7 @@ function Header() {
                             className="flex items-center gap-2 w-full text-left px-4 py-3 text-green-700 hover:bg-green-50 transition-colors"
                             onClick={() => {
                               setUserMenuOpen(false)
-                              console.log('Navigate to batch management')
+                              navigate('/supplier')
                             }}
                           >
                             <FiGrid className="w-4 h-4" />
@@ -191,7 +191,7 @@ function Header() {
                           className="flex items-center gap-2 w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-100 transition-colors"
                           onClick={() => {
                             setUserMenuOpen(false)
-                            console.log('Navigate to orders')
+                            navigate('/orders')
                           }}
                         >
                           <FiPackage className="w-4 h-4" />
