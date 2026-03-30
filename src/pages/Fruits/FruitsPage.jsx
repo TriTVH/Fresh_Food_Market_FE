@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiChevronRight,
@@ -11,7 +11,8 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { mockProducts } from '@/utils/mockData'
+import { fetchProducts } from '@/api/productApi'
+import { mapProductDtoToFrontend, matchCategory } from '@/utils/mapper'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -33,47 +34,26 @@ function FruitsPage() {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
 
-  // ==================== API INTEGRATION (FUTURE) ====================
-  // TODO: Uncomment when API is ready, then remove Mock Data section below
-  /*
-  const [products, setProducts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [allFruits, setAllFruits] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    fetchFruits()
-  }, [selectedSubcategory, currentPage])
-
-  const fetchFruits = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      const params = new URLSearchParams({
-        category: 'fruits',
-        page: currentPage,
-        limit: productsPerPage,
-      })
-      
-      if (selectedSubcategory !== 'all') {
-        params.append('subcategory', selectedSubcategory)
+    const loadProducts = async () => {
+      try {
+        const response = await fetchProducts(true);
+        if (response && response.success && response.data) {
+          const mapped = response.data.map(mapProductDtoToFrontend);
+          const filtered = mapped.filter(p => matchCategory(p.category, 'fruits'));
+          setAllFruits(filtered);
+        }
+      } catch (err) {
+        console.error("Failed to load products", err);
+      } finally {
+        setIsLoading(false)
       }
-      
-      const response = await fetch(`YOUR_API_BASE_URL/api/products?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch fruits')
-      
-      const data = await response.json()
-      setProducts(data.products || data)
-      
-    } catch (err) {
-      console.error('Error fetching fruits:', err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-  */
-  // ==================== END API INTEGRATION ====================
+    };
+    loadProducts();
+  }, [])
 
   // Category options for dropdown
   const categories = [
@@ -86,13 +66,10 @@ function FruitsPage() {
 
   // Subcategories for Fruits
   const fruitSubcategories = [
-    { id: 'all', name: 'Tất Cả' },
-    { id: 'vietnam', name: 'Trái Việt Nam' },
-    { id: 'imported', name: 'Trái Nhập Khẩu' },
+    { id: 'all', name: 'Tất Cả', values: [] },
+    { id: 'vietnam', name: 'Trái Việt Nam', values: ['vietnam'] },
+    { id: 'imported', name: 'Trái Nhập Khẩu', values: ['imported'] },
   ]
-
-  // Get only fruits products
-  const allFruits = mockProducts.fruits || []
 
   // Price ranges
   const priceRanges = [

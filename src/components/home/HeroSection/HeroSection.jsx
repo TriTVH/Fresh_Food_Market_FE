@@ -1,13 +1,15 @@
 import { FiSearch } from 'react-icons/fi'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 function HeroSection() {
   const [searchQuery, setSearchQuery] = useState('')
+  const navigate = useNavigate()
 
   const handleSearch = (e) => {
     e.preventDefault()
     if (searchQuery.trim()) {
-      console.log('Search for:', searchQuery)
+      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`)
       setSearchQuery('')
     }
   }

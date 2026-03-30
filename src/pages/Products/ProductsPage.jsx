@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FiChevronRight,
   FiChevronLeft,
@@ -11,7 +11,9 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { mockProducts } from '@/utils/mockData'
+// remove mockData
+import { fetchProducts } from '@/api/productApi'
+import { mapProductDtoToFrontend, matchCategory } from '@/utils/mapper'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -33,48 +35,36 @@ function ProductsPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
 
-  // ==================== API INTEGRATION (FUTURE) ====================
-  // TODO: Uncomment when API is ready, then remove Mock Data section below
-  /*
-  const [products, setProducts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [allProducts, setAllProducts] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [searchParams] = useSearchParams()
 
+  // Handle search query from URL
   useEffect(() => {
-    fetchProducts()
-  }, [selectedCategory, currentPage])
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      // Build query params
-      const params = new URLSearchParams({
-        page: currentPage,
-        limit: productsPerPage,
-      })
-      
-      if (selectedCategory !== 'all') {
-        params.append('category', selectedCategory)
-      }
-      
-      // API Call
-      const response = await fetch(`YOUR_API_BASE_URL/api/products?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch products')
-      
-      const data = await response.json()
-      setProducts(data.products || data) // Adjust based on your API response structure
-      
-    } catch (err) {
-      console.error('Error fetching products:', err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
+    const query = searchParams.get('search')
+    if (query) {
+      setSearchQuery(query)
+      setCurrentPage(1)
     }
-  }
-  */
-  // ==================== END API INTEGRATION ====================
+  }, [searchParams])
+
+  // Load products from API
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const response = await fetchProducts(true);
+        if (response && response.success && response.data) {
+          setAllProducts(response.data.map(mapProductDtoToFrontend));
+        }
+      } catch (err) {
+        console.error("Failed to load products", err);
+      } finally {
+        setIsLoading(false)
+      }
+    };
+    loadProducts();
+  }, [])
+
   const productsPerPage = 12
 
   const categories = [
@@ -92,21 +82,11 @@ function ProductsPage() {
     { id: 'imported', name: 'Trái Nhập Khẩu' },
   ]
 
-  // Combine all products
-  const allProducts = useMemo(() => {
-    let products = []
-    if (selectedCategory === 'all') {
-      products = [
-        ...mockProducts.vegetables,
-        ...mockProducts.fruits,
-        ...mockProducts.meatSeafood,
-        ...mockProducts.driedFood,
-      ]
-    } else {
-      products = mockProducts[selectedCategory] || []
-    }
-    return products
-  }, [selectedCategory])
+  // Filter category
+  const categoryProducts = useMemo(() => {
+    if (selectedCategory === 'all') return allProducts;
+    return allProducts.filter(p => matchCategory(p.category, selectedCategory));
+  }, [allProducts, selectedCategory])
 
   // Price ranges
   const priceRanges = [
@@ -117,25 +97,49 @@ function ProductsPage() {
     { id: '200+', label: 'Trên 200.000đ', min: 200000, max: Infinity },
   ]
 
-  // Filter products
+  // Filter products systematically
   const filteredProducts = useMemo(() => {
-    return allProducts.filter((product) => {
-      // Search filter
-      if (searchQuery) {
-        const query = removeVietnameseAccents(searchQuery.toLowerCase())
-        if (!removeVietnameseAccents(product.name.toLowerCase()).includes(query)) {
-          return false
+    const query = removeVietnameseAccents(searchQuery.toLowerCase()).trim()
+    
+    // Base products to filter (use allProducts when searching to avoid being stuck in a category)
+    const baseProducts = query ? allProducts : categoryProducts
+
+    return baseProducts.filter((product) => {
+      // Search filter logic
+      if (searchQuery.trim()) {
+        const rawQuery = searchQuery.toLowerCase().trim()
+        const cleanQuery = removeVietnameseAccents(rawQuery)
+        
+        const rawName = product.name.toLowerCase()
+        const cleanName = removeVietnameseAccents(rawName)
+        
+        const rawCat = (product.category || '').toLowerCase()
+        const cleanCat = removeVietnameseAccents(rawCat)
+
+        // Check if user provided accents in their search
+        const queryHasAccents = rawQuery !== cleanQuery
+
+        if (queryHasAccents) {
+          // Strict match with accents (Name only)
+          if (!rawName.includes(rawQuery)) {
+            return false
+          }
+        } else {
+          // Flexible match without accents (Name only)
+          if (!cleanName.includes(cleanQuery)) {
+            return false
+          }
         }
       }
 
-      // Subcategory filter (only for fruits)
-      if (selectedCategory === 'fruits' && selectedSubcategory !== 'all') {
+      // Subcategory filter (only for fruits if not searching)
+      if (!query && selectedCategory === 'fruits' && selectedSubcategory !== 'all') {
         if (product.subcategory !== selectedSubcategory) {
           return false
         }
       }
 
-      // Price filter
+      // Price filter (always apply)
       if (selectedPriceRanges.length > 0) {
         const matchesPrice = selectedPriceRanges.some((rangeId) => {
           const range = priceRanges.find((r) => r.id === rangeId)
@@ -147,7 +151,7 @@ function ProductsPage() {
 
       return true
     })
-  }, [allProducts, searchQuery, selectedSubcategory, selectedCategory, selectedPriceRanges])
+  }, [allProducts, categoryProducts, searchQuery, selectedSubcategory, selectedCategory, selectedPriceRanges])
 
   const togglePriceRange = (rangeId) => {
     setSelectedPriceRanges((prev) =>
