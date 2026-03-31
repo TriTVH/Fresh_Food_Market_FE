@@ -64,13 +64,13 @@ function SeafoodMeatPage() {
     { id: 'dryFood', name: 'Thực Ăn Khô', path: '/dry-food' },
   ]
 
-  // Subcategories for Seafood & Meat
+  // Subcategories for Seafood & Meat - keywords match against product.subcategory (subCategoryName from BE)
   const seafoodMeatSubcategories = [
-    { id: 'all', name: 'Tất Cả', values: [] },
-    { id: 'seafood', name: 'Hải Sản', values: ['seafood'] },
-    { id: 'pork', name: 'Thịt Heo', values: ['pork'] },
-    { id: 'beef', name: 'Thịt Bò', values: ['beef'] },
-    { id: 'chicken', name: 'Thịt Gà, Vịt', values: ['chicken', 'bird'] },
+    { id: 'all', name: 'Tất Cả', keywords: [] },
+    { id: 'seafood', name: 'Hải Sản', keywords: ['hải sản', 'cầu', 'tôm', 'cá', 'mực', 'cà ràng'] },
+    { id: 'pork', name: 'Thịt Heo', keywords: ['heo', 'lợn'] },
+    { id: 'beef', name: 'Thịt Bò', keywords: ['bò'] },
+    { id: 'chicken', name: 'Thịt Gà, Vịt', keywords: ['gà', 'vịt', 'gia cầm'] },
   ]
 
   // Price ranges
@@ -93,13 +93,15 @@ function SeafoodMeatPage() {
         }
       }
 
-      // Subcategory filter
+      // Subcategory filter - match against real Vietnamese subcategory name from BE
       if (selectedSubcategory !== 'all') {
         const selectedTab = seafoodMeatSubcategories.find((s) => s.id === selectedSubcategory)
-        if (selectedTab && selectedTab.values.length > 0) {
-          if (!selectedTab.values.includes(product.subcategory)) {
-            return false
-          }
+        if (selectedTab && selectedTab.keywords.length > 0) {
+          const subcat = removeVietnameseAccents((product.subcategory || product.category || '').toLowerCase())
+          const matches = selectedTab.keywords.some(kw =>
+            subcat.includes(removeVietnameseAccents(kw.toLowerCase()))
+          )
+          if (!matches) return false
         }
       }
 

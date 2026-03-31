@@ -64,27 +64,47 @@ export const mapVoucherToFrontend = (voucherDto) => {
 };
 
 // ==================== ORDER MAPPER ====================
+// Status mapping from BE enum to FE key
+const ORDER_STATUS_MAP = {
+    'pending': 'pending',
+    'packaging': 'packing',
+    'out_of_stock': 'failed',
+    'shipping': 'shipping',
+    'delivered': 'success',
+    'cancelled': 'failed',
+    'failed': 'failed',
+};
+
 export const mapOrderDtoToFrontend = (orderDto) => {
+    const rawStatus = (orderDto.orderStatus || 'pending').toLowerCase();
+    const status = ORDER_STATUS_MAP[rawStatus] || 'pending';
+
+    const items = (orderDto.items || []).map(item => ({
+        id: item.productId,
+        name: item.productName || `Sản phẩm #${item.productId}`,
+        price: typeof item.price === 'number' ? item.price
+             : typeof item.subTotal === 'number' ? item.subTotal / (item.quantity || 1)
+             : 0,
+        quantity: item.quantity || 1,
+        subtotal: typeof item.subTotal === 'number' ? item.subTotal : 0,
+        image: item.imageUrl || 'https://placehold.co/200x200?text=SP'
+    }));
+
+    const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
     return {
         order_id: orderDto.orderId,
-        order_date: orderDto.createdAtUtc,
-        status: orderDto.orderStatus.toLowerCase(),
-        total_amount: orderDto.items.reduce((sum, item) => sum + item.subTotal, 0),
-        items: orderDto.items.map(item => ({
-            id: item.productId,
-            name: item.productName || 'Unknown Product',
-            price: item.price,
-            quantity: item.quantity,
-            // Fallback image
-            image: 'https://placehold.co/200x200?text=Item' 
-        })),
+        order_date: orderDto.createdAtUtc || orderDto.updatedAtUtc,
+        status,
+        total_amount: totalAmount,
+        items,
         shipping_address: {
-            street: 'Default Street', 
-            ward: 'Default Ward',
-            city: 'Default City'
+            street: orderDto.shippingStreet || orderDto.street || '',
+            ward: orderDto.shippingWard || orderDto.ward || '',
+            city: orderDto.shippingCity || orderDto.city || ''
         },
-        payment_method: orderDto.paymentMethod,
-        shipping_fee: 30000 
+        payment_method: orderDto.paymentMethod || '',
+        shipping_fee: orderDto.shippingFee || 0
     };
 };
 

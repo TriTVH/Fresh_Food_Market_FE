@@ -64,11 +64,11 @@ function FruitsPage() {
     { id: 'dryFood', name: 'Thực Ăn Khô', path: '/dry-food' },
   ]
 
-  // Subcategories for Fruits
+  // Subcategories for Fruits - keywords match against product.subcategory (subCategoryName from BE)
   const fruitSubcategories = [
-    { id: 'all', name: 'Tất Cả', values: [] },
-    { id: 'vietnam', name: 'Trái Việt Nam', values: ['vietnam'] },
-    { id: 'imported', name: 'Trái Nhập Khẩu', values: ['imported'] },
+    { id: 'all', name: 'Tất Cả', keywords: [] },
+    { id: 'vietnam', name: 'Trái Việt Nam', keywords: ['việt', 'nội địa', 'trong nước'] },
+    { id: 'imported', name: 'Trái Nhập Khẩu', keywords: ['nhập khẩu', 'nhập', 'ngoại nhập'] },
   ]
 
   // Price ranges
@@ -91,10 +91,15 @@ function FruitsPage() {
         }
       }
 
-      // Subcategory filter
+      // Subcategory filter - match against real Vietnamese subcategory name from BE
       if (selectedSubcategory !== 'all') {
-        if (product.subcategory !== selectedSubcategory) {
-          return false
+        const selectedTab = fruitSubcategories.find((s) => s.id === selectedSubcategory)
+        if (selectedTab && selectedTab.keywords.length > 0) {
+          const subcat = removeVietnameseAccents((product.subcategory || product.category || '').toLowerCase())
+          const matches = selectedTab.keywords.some(kw =>
+            subcat.includes(removeVietnameseAccents(kw.toLowerCase()))
+          )
+          if (!matches) return false
         }
       }
 

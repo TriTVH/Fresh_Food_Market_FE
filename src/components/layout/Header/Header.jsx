@@ -191,6 +191,16 @@ function Header() {
                           className="flex items-center gap-2 w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-100 transition-colors"
                           onClick={() => {
                             setUserMenuOpen(false)
+                            navigate('/profile')
+                          }}
+                        >
+                          <FiUser className="w-4 h-4" />
+                          <span>Thông Tin Cá Nhân</span>
+                        </button>
+                        <button
+                          className="flex items-center gap-2 w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-100 transition-colors"
+                          onClick={() => {
+                            setUserMenuOpen(false)
                             navigate('/orders')
                           }}
                         >

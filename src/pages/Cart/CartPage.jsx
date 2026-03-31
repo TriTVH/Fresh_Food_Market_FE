@@ -77,21 +77,19 @@ function CartPage() {
       setIsLoginModalOpen(true)
       return
     }
-    
+
     try {
         const orderData = {
-           userId: user.phone || user.username,
-           paymentMethod: "COD",
-           paymentStatus: "PENDING",
-           items: cartItems.map(item => ({
-               productId: item.id,
-               productName: item.name,
-               quantity: item.quantity,
-               price: item.price,
-               subTotal: item.price * item.quantity
+           UserId: user.phone || user.username,
+           Items: cartItems.map(item => ({
+               ProductId: item.id,
+               ProductName: item.name,
+               Quantity: item.quantity,
+               Price: item.price,
+               SubTotal: item.price * item.quantity
            }))
         }
-        
+
         const response = await placeOrder(orderData);
         if (response) {
             setIsSuccessModalOpen(true);

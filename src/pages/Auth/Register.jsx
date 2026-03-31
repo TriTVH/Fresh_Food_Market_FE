@@ -4,6 +4,7 @@ import { FiMail, FiLock, FiEye, FiEyeOff, FiUser, FiPhone } from 'react-icons/fi
 import { FcGoogle } from 'react-icons/fc'
 import { FaFacebook } from 'react-icons/fa'
 import { useAuth } from '@/context/AuthContext'
+import { register as registerApi } from '@/api/authApi'
 
 function Register() {
   const navigate = useNavigate()
@@ -21,7 +22,7 @@ function Register() {
     agreeToTerms: false,
   })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
@@ -35,19 +36,26 @@ function Register() {
       return
     }
 
-    setIsLoading(true)
+    if (!formData.phone) {
+      setError('Vui lòng nhập số điện thoại!')
+      return
+    }
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
-      // Auto login after registration
-      login({
-        email: formData.email,
-        name: formData.fullName,
-        role: 'customer',
+    setIsLoading(true)
+    try {
+      await registerApi({
+        Phone: formData.phone,
+        Password: formData.password,
       })
+      // Đăng ký thành công → tự động đăng nhập
+      await login(formData.phone, formData.password)
       navigate('/')
-    }, 1500)
+    } catch (err) {
+      const msg = err?.message || err?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại!'
+      setError(msg)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleChange = (e) => {

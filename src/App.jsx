@@ -20,6 +20,7 @@ import ShoppingGuidePage from '@pages/ShoppingGuide/ShoppingGuidePage'
 import ReturnPolicyPage from '@pages/ReturnPolicy/ReturnPolicyPage'
 import AdminDashboard from '@pages/Admin/AdminDashboard'
 import SupplierDashboard from '@pages/Supplier/SupplierDashboard'
+import ProfilePage from '@pages/Profile/ProfilePage'
 import ScrollToTop from '@/components/common/ScrollToTop'
 import './styles/index.css'
 
@@ -50,6 +51,7 @@ function App() {
             <Route path="/return-policy" element={<ReturnPolicyPage />} />
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/supplier" element={<SupplierDashboard />} />
+            <Route path="/profile" element={<ProfilePage />} />
           </Routes>
         </BrowserRouter>
       </CartProvider>

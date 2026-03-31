@@ -64,12 +64,12 @@ function VegetablesPage() {
     { id: 'dryFood', name: 'Thực Ăn Khô', path: '/dry-food' },
   ]
 
-  // Subcategories for Vegetables
+  // Subcategories for Vegetables - values match against product.subcategory (subCategoryName from BE)
   const vegetableSubcategories = [
-    { id: 'all', name: 'Tất Cả', values: [] },
-    { id: 'leafy', name: 'Rau Ăn Lá', values: ['leafy'] },
-    { id: 'root', name: 'Củ, Quả', values: ['root', 'fruit-veg', 'cruciferous'] },
-    { id: 'mushroom', name: 'Nấm, Đậu Hũ', values: ['mushroom'] },
+    { id: 'all', name: 'Tất Cả', keywords: [] },
+    { id: 'leafy', name: 'Rau Ăn Lá', keywords: ['rau', 'lá', 'cải', 'xà lách', 'rau muống', 'rau dền'] },
+    { id: 'root', name: 'Củ, Quả', keywords: ['củ', 'quả', 'cà', 'bí', 'dưa', 'khoai', 'hành', 'tỏi', 'gừng', 'ớt'] },
+    { id: 'mushroom', name: 'Nấm, Đậu Hũ', keywords: ['nấm', 'đậu', 'hũ', 'đậu hũ', 'đậu phụ'] },
   ]
 
   // Price ranges
@@ -92,13 +92,15 @@ function VegetablesPage() {
         }
       }
 
-      // Subcategory filter
+      // Subcategory filter - match against real Vietnamese subcategory name from BE
       if (selectedSubcategory !== 'all') {
         const selectedTab = vegetableSubcategories.find((s) => s.id === selectedSubcategory)
-        if (selectedTab && selectedTab.values.length > 0) {
-          if (!selectedTab.values.includes(product.subcategory)) {
-            return false
-          }
+        if (selectedTab && selectedTab.keywords.length > 0) {
+          const subcat = removeVietnameseAccents((product.subcategory || product.category || '').toLowerCase())
+          const matches = selectedTab.keywords.some(kw =>
+            subcat.includes(removeVietnameseAccents(kw.toLowerCase()))
+          )
+          if (!matches) return false
         }
       }
 

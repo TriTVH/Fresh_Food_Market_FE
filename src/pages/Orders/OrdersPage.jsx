@@ -59,6 +59,7 @@ function OrdersPage() {
   const [orders, setOrders] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedStatus, setSelectedStatus] = useState('all')
+  const [selectedOrder, setSelectedOrder] = useState(null)
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -96,7 +97,14 @@ function OrdersPage() {
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
+    const num = Number(amount)
+    if (isNaN(num) || num === 0) return '—'
+    return new Intl.NumberFormat('vi-VN').format(num) + 'đ';
+  }
+
+  const getAddressText = (addr) => {
+    const parts = [addr?.street, addr?.ward, addr?.city].filter(Boolean)
+    return parts.length > 0 ? parts.join(', ') : 'Chưa có thông tin địa chỉ'
   }
 
   return (
@@ -234,7 +242,10 @@ function OrdersPage() {
 
                     {/* Actions */}
                     <div className="mt-4 flex gap-3">
-                      <button className="flex-1 bg-gray-100 text-gray-700 font-semibold py-3 px-6 rounded-lg hover:bg-gray-200 transition-colors">
+                      <button
+                        className="flex-1 bg-[#75b06f] text-white font-semibold py-3 px-6 rounded-lg hover:bg-[#5a9450] transition-colors"
+                        onClick={() => setSelectedOrder(order)}
+                      >
                         Xem Chi Tiết
                       </button>
                     </div>
@@ -245,6 +256,96 @@ function OrdersPage() {
           </div>
         )}
       </div>
+
+      {/* ── Order Detail Modal ── */}
+      {selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Chi Tiết Đơn Hàng</h2>
+                <p className="text-sm text-[#75b06f] font-semibold">#{selectedOrder.order_id}</p>
+              </div>
+              <button onClick={() => setSelectedOrder(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 flex flex-col gap-5">
+              {/* Status + Date */}
+              <div className="flex items-center justify-between">
+                <span className={`px-3 py-1.5 rounded-full text-sm font-bold ${
+                  (statusConfig[selectedOrder.status] || statusConfig.pending).bg
+                } ${
+                  (statusConfig[selectedOrder.status] || statusConfig.pending).color
+                }`}>
+                  {(statusConfig[selectedOrder.status] || statusConfig.pending).label}
+                </span>
+                <span className="text-sm text-gray-500">{formatDate(selectedOrder.order_date)}</span>
+              </div>
+
+              {/* Items */}
+              <div>
+                <p className="font-bold text-gray-800 mb-3">Sản Phẩm Đã Đặt</p>
+                <div className="border rounded-xl overflow-hidden">
+                  {selectedOrder.items.map((item, i) => (
+                    <div key={i} className="flex gap-3 p-3 items-center" style={{ borderBottom: i < selectedOrder.items.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                      <img src={item.image} alt={item.name} className="w-14 h-14 object-cover rounded-lg bg-gray-100" />
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-800 text-sm">{item.name}</p>
+                        <p className="text-xs text-gray-500">Số lượng: {item.quantity}</p>
+                      </div>
+                      <p className="font-bold text-[#75b06f] text-sm whitespace-nowrap">
+                        {formatCurrency(item.price)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <FiMapPin className="text-gray-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700">Địa chỉ giao hàng</p>
+                    <p className="text-sm text-gray-500">{getAddressText(selectedOrder.shipping_address)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment + Total */}
+              <div className="border rounded-xl overflow-hidden">
+                {selectedOrder.payment_method && (
+                  <div className="flex justify-between items-center px-4 py-3 border-b">
+                    <span className="text-sm text-gray-600">Phương thức thanh toán</span>
+                    <span className="text-sm font-semibold text-gray-800">{selectedOrder.payment_method}</span>
+                  </div>
+                )}
+                {selectedOrder.shipping_fee > 0 && (
+                  <div className="flex justify-between items-center px-4 py-3 border-b">
+                    <span className="text-sm text-gray-600">Phí vận chuyển</span>
+                    <span className="text-sm font-semibold text-gray-800">{formatCurrency(selectedOrder.shipping_fee)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center px-4 py-3 bg-[#f0fdf4]">
+                  <span className="font-bold text-gray-800">Tổng cộng</span>
+                  <span className="text-lg font-bold text-[#75b06f]">{formatCurrency(selectedOrder.total_amount)}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="w-full py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Footer />
     </div>
   )

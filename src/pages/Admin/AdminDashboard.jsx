@@ -1,6 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { getOrders } from '@/api/orderApi'
+import { fetchProducts, fetchSubCategories } from '@/api/productApi'
+import { mapProductDtoToFrontend } from '@/utils/mapper'
 import {
   FiGrid, FiPackage, FiBox, FiShoppingCart,
   FiHome, FiLogOut, FiEye, FiSearch,
@@ -27,13 +30,44 @@ const iconBtn = (color) => ({
   justifyContent: 'center', cursor: 'pointer',
 })
 
-// ── Mock Data ──
-const STATS = [
-  { label: 'Tổng Doanh Thu', value: '248.560.000đ', change: '+12.5%', bg: `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, icon: '💰' },
-  { label: 'Đơn Hàng', value: '1.482', change: '+8.2%', bg: 'linear-gradient(135deg,#3b82f6,#2563eb)', icon: '📦' },
-  { label: 'Khách Hàng', value: '856', change: '+15.3%', bg: 'linear-gradient(135deg,#a855f7,#9333ea)', icon: '👥' },
-  { label: 'Sản Phẩm', value: '88', change: '+4', bg: 'linear-gradient(135deg,#f97316,#ea580c)', icon: '🛒' },
-]
+// Helper to build STATS from real data
+function buildStats(orders, products) {
+  const totalRevenue = orders.reduce((sum, o) => {
+    const raw = o.totalAmount || o.TotalAmount || 0
+    return sum + (typeof raw === 'number' ? raw : 0)
+  }, 0)
+  const uniqueUsers = new Set(orders.map(o => o.userId || o.UserId).filter(Boolean)).size
+  return [
+    { label: 'Tổng Doanh Thu', value: totalRevenue.toLocaleString('vi-VN') + 'đ', change: '', bg: `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, icon: '💰' },
+    { label: 'Đơn Hàng', value: String(orders.length), change: '', bg: 'linear-gradient(135deg,#3b82f6,#2563eb)', icon: '📦' },
+    { label: 'Khách Hàng', value: String(uniqueUsers || '—'), change: '', bg: 'linear-gradient(135deg,#a855f7,#9333ea)', icon: '👥' },
+    { label: 'Sản Phẩm', value: String(products.length), change: '', bg: 'linear-gradient(135deg,#f97316,#ea580c)', icon: '🛒' },
+  ]
+}
+
+// Helper: map BE OrderRecord → UI order shape
+function mapOrder(o) {
+  const items = (o.items || o.Items || []).map(it => ({
+    name: it.productName || it.ProductName || it.productId || 'Sản phẩm',
+    qty: it.quantity || it.Quantity || 1,
+    price: it.price || it.Price || 0,
+  }))
+  const totalAmount = items.reduce((s, it) => s + it.qty * it.price, 0)
+  const createdAt = o.createdAtUtc || o.CreatedAtUtc || ''
+  const dateObj = createdAt ? new Date(createdAt) : null
+  const date = dateObj ? `${dateObj.getDate().toString().padStart(2,'0')}/${(dateObj.getMonth()+1).toString().padStart(2,'0')}/${dateObj.getFullYear()}` : '—'
+  const time = dateObj ? `${dateObj.getHours().toString().padStart(2,'0')}:${dateObj.getMinutes().toString().padStart(2,'0')}` : '—'
+  const status = o.orderStatus || o.OrderStatus || o.status || ''
+  return {
+    id: o.orderId || o.OrderId || o.id || '?',
+    customer: o.userId || o.UserId || 'Khách hàng',
+    total: totalAmount.toLocaleString('vi-VN') + 'đ',
+    totalAmount,
+    date, time, status,
+    items,
+    shipping: 0, discount: 0, payment: 'COD',
+  }
+}
 
 const RECURRING_ORDERS = [
   {
@@ -247,16 +281,8 @@ const TOP_PRODUCTS = [
   { rank: 9, name: 'Xoài Cát', rating: 4.8, reviews: 378, sold: '26.460.000đ' },
   { rank: 10, name: 'Ớt Chuông', rating: 4.7, reviews: 445, sold: '22.250.000đ' },
 ]
-const INIT_PRODUCTS = [
-  { id: 'P001', name: 'Cá Hồi Nauy Phi Lê', categoryCode: 'SC001', origin: 'Na Uy', price: 450000, qty: 50, weight: 0.5, unit: 'kg' },
-  { id: 'P002', name: 'Thịt Bò Úc Thăn Nội', categoryCode: 'SC002', origin: 'Úc', price: 380000, qty: 30, weight: 0.5, unit: 'kg' },
-  { id: 'P003', name: 'Rau Cải Xanh Đà Lạt', categoryCode: 'SC003', origin: 'Đà Lạt, Việt Nam', price: 25000, qty: 100, weight: 0.3, unit: 'kg' },
-  { id: 'P004', name: 'Tôm Sú Sống', categoryCode: 'SC001', origin: 'Cà Mau, Việt Nam', price: 280000, qty: 40, weight: 0.5, unit: 'kg' },
-  { id: 'P005', name: 'Táo Fuji Nhật Bản', categoryCode: 'SC004', origin: 'Nhật Bản', price: 95000, qty: 80, weight: 0.5, unit: 'kg' },
-  { id: 'P006', name: 'Cà Chua Bi Hồng', categoryCode: 'SC003', origin: 'Lâm Đồng, Việt Nam', price: 42000, qty: 120, weight: 0.5, unit: 'kg' },
-  { id: 'P007', name: 'Tôm Hùm Canada', categoryCode: 'SC001', origin: 'Canada', price: 1200000, qty: 10, weight: 0.8, unit: 'kg' },
-  { id: 'P008', name: 'Nho Mỹ Đỏ', categoryCode: 'SC004', origin: 'Mỹ', price: 180000, qty: 60, weight: 0.5, unit: 'kg' },
-]
+// INIT_PRODUCTS is now just a fallback empty array; real data comes from API
+const INIT_PRODUCTS = []
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: FiGrid, desc: 'Tổng quan hệ thống' },
   { label: 'Quản Lý Sản Phẩm', icon: FiPackage, desc: 'Danh mục sản phẩm' },
@@ -869,7 +895,29 @@ function DiscountProgramModal({ product, onClose }) {
 
 function ProductManagementView() {
   const [products, setProducts] = useState(INIT_PRODUCTS)
+  const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    fetchProducts(false)
+      .then(res => {
+        const list = res?.data || res?.Data || []
+        const mapped = list.map(p => ({
+          id: p.productId || p.ProductId || '',
+          name: p.productName || p.ProductName || '',
+          categoryCode: p.subCategoryId || p.SubCategoryId || p.categoryName || '',
+          origin: p.origin || p.Origin || '',
+          price: p.priceSell || p.PriceSell || 0,
+          qty: p.quantity || p.Quantity || 0,
+          weight: p.weight || p.Weight || 0,
+          unit: p.unit || p.Unit || 'kg',
+        }))
+        if (mapped.length > 0) setProducts(mapped)
+      })
+      .catch(err => console.error('Failed to load products for admin:', err))
+      .finally(() => setIsLoading(false))
+  }, [])
+
   const [modal, setModal] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [discountProduct, setDiscountProduct] = useState(null)
@@ -966,9 +1014,48 @@ function ProductManagementView() {
 // ── Dashboard View ──
 function DashboardView({ currentUser }) {
   const [selectedFilter, setSelectedFilter] = useState('Tất cả')
-  const [selectedMonth, setSelectedMonth] = useState(null) // null = all months
+  const [selectedMonth, setSelectedMonth] = useState(null)
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const rankColors = ['#f59e0b', '#6b7280', '#b45309', PRIMARY, '#3b82f6']
+
+  // Real API state
+  const [allOrders, setAllOrders] = useState([])
+  const [allProducts, setAllProducts] = useState([])
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true)
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true)
+
+  useEffect(() => {
+    getOrders()
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data?.data || data?.Data || [])
+        setAllOrders(list.map(mapOrder))
+      })
+      .catch(err => console.error('Failed to load orders:', err))
+      .finally(() => setIsLoadingOrders(false))
+  }, [])
+
+  useEffect(() => {
+    fetchProducts(false)
+      .then(res => {
+        const list = res?.data || res?.Data || []
+        setAllProducts(list.map(mapProductDtoToFrontend))
+      })
+      .catch(err => console.error('Failed to load products:', err))
+      .finally(() => setIsLoadingProducts(false))
+  }, [])
+
+  const stats = buildStats(allOrders, allProducts)
+
+  // Top products by soldCount
+  const topProducts = [...allProducts]
+    .sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))
+    .slice(0, 10)
+    .map((p, i) => ({ rank: i + 1, name: p.name, rating: p.rating || 5, reviews: p.reviewCount || 0, sold: ((p.soldCount || 0) * p.price).toLocaleString('vi-VN') + 'đ' }))
+
+  // Filter orders by status
+  const pendingOrders = allOrders.filter(o => o.status?.toUpperCase() === 'PENDING')
+  const packingOrders = allOrders.filter(o => o.status?.toUpperCase() === 'PACKAGING')
+  const deliveringOrders = allOrders.filter(o => ['SHIPPING', 'DELIVERING', 'OUT_FOR_DELIVERY'].includes(o.status?.toUpperCase()))
 
   // Filter orders by month (date format: 'dd/mm/yyyy')
   const filterByMonth = (orders) => {
@@ -980,9 +1067,9 @@ function DashboardView({ currentUser }) {
   }
 
   const filteredRecurring = filterByMonth(RECURRING_ORDERS)
-  const filteredPending = filterByMonth(PENDING_ORDERS)
-  const filteredPacking = filterByMonth(PACKING_ORDERS)
-  const filteredDelivering = filterByMonth(DELIVERING_ORDERS)
+  const filteredPending = filterByMonth(pendingOrders)
+  const filteredPacking = filterByMonth(packingOrders)
+  const filteredDelivering = filterByMonth(deliveringOrders)
 
   const handleSelectAll = () => {
     setSelectedFilter('Tất cả')
@@ -1039,16 +1126,19 @@ function DashboardView({ currentUser }) {
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
-        {STATS.map((s) => (
+        {stats.map((s) => (
           <div key={s.label} style={{ background: '#fff', borderRadius: 14, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{s.icon}</div>
-              <span style={{ color: PRIMARY, fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 3 }}>
-                <FiTrendingUp style={{ fontSize: 13 }} /> {s.change}
-              </span>
+              {isLoadingOrders || isLoadingProducts
+                ? <span style={{ color: '#94a3b8', fontSize: 12 }}>Đang tải...</span>
+                : <span style={{ color: PRIMARY, fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 3 }}><FiTrendingUp style={{ fontSize: 13 }} /> Live</span>
+              }
             </div>
             <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>{s.label}</p>
-            <p style={{ fontWeight: 800, fontSize: 20, color: '#0f172a', margin: 0 }}>{s.value}</p>
+            <p style={{ fontWeight: 800, fontSize: 20, color: '#0f172a', margin: 0 }}>
+              {(isLoadingOrders || isLoadingProducts) ? '...' : s.value}
+            </p>
           </div>
         ))}
       </div>
@@ -1078,7 +1168,7 @@ function DashboardView({ currentUser }) {
         <div style={{ background: '#fff', borderRadius: 14, padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', position: 'sticky', top: 0 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: '0 0 16px' }}>Sản Phẩm Bán Chạy</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-            {TOP_PRODUCTS.map((p) => (
+            {(topProducts.length > 0 ? topProducts : TOP_PRODUCTS).map((p) => (
               <div key={p.rank} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: p.rank <= 3 ? `linear-gradient(135deg,${rankColors[p.rank - 1]},${rankColors[p.rank - 1]}cc)` : '#f1f5f9', color: p.rank <= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
                   {p.rank}
