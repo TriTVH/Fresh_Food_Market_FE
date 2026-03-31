@@ -248,26 +248,46 @@ export const mockProducts = {
     ],
 }
 
+// slug '' = Tất cả (không lọc). Các slug khớp với product.subcategory từ API (apiService SUBCATEGORY_MAP).
 export const categories = {
     vegetables: {
         id: 'vegetables',
         name: 'Rau, Củ & Nấm',
-        tabs: ['Tất cả', 'Rau Ăn Lá', 'Củ, Quả', 'Nấm, Đậu Hũ'],
+        tabs: [
+            { label: 'Tất cả', slug: '' },
+            { label: 'Rau Ăn Lá', slug: 'leafy' },
+            { label: 'Củ, Quả', slug: 'root' },
+            { label: 'Nấm, Đậu Hũ', slug: 'mushroom' },
+        ],
     },
     fruits: {
         id: 'fruits',
         name: 'Trái Cây Tươi Ngon',
-        tabs: ['Tất cả', 'Trái Việt Nam', 'Trái Nhập Khẩu'],
+        tabs: [
+            { label: 'Tất cả', slug: '' },
+            { label: 'Trái Việt Nam', slug: 'vietnam' },
+            { label: 'Trái Nhập Khẩu', slug: 'imported' },
+        ],
     },
     meatSeafood: {
         id: 'meatSeafood',
         name: 'Thịt, Cá, Trứng & Hải Sản',
-        tabs: ['Tất cả', 'Hải Sản', 'Thịt Heo', 'Thịt Bò', 'Thịt Gà, Vịt & Chim'],
+        tabs: [
+            { label: 'Tất cả', slug: '' },
+            { label: 'Hải Sản', slug: 'seafood' },
+            { label: 'Thịt Heo', slug: 'pork' },
+            { label: 'Thịt Bò', slug: 'beef' },
+            { label: 'Thịt Gà, Vịt & Chim', slug: 'poultry' },
+        ],
     },
     driedFood: {
         id: 'driedFood',
         name: 'Thực Phẩm Khô',
-        tabs: ['Tất cả', 'Trái Cây Sấy', 'Khô Chế Biến Sẵn'],
+        tabs: [
+            { label: 'Tất cả', slug: '' },
+            { label: 'Trái Cây Sấy', slug: 'dried-fruit' },
+            { label: 'Khô Chế Biến Sẵn', slug: 'processed' },
+        ],
     },
 }
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiChevronRight,
@@ -11,7 +11,7 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { mockProducts } from '@/utils/mockData'
+import { fetchActiveProductsByCategory } from '@/api/apiService'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -32,51 +32,26 @@ function DryFoodPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
-
-  // ==================== API INTEGRATION (FUTURE) ====================
-  // TODO: Uncomment when API is ready, then remove Mock Data section below
-  /*
-  const [products, setProducts] = useState([])
+  const [allDryFood, setAllDryFood] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetchDryFood()
-  }, [selectedSubcategory, currentPage])
-
-  const fetchDryFood = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      const params = new URLSearchParams({
-        category: 'driedFood',
-        page: currentPage,
-        limit: productsPerPage,
-      })
-      
-      if (selectedSubcategory !== 'all') {
-        const subcatConfig = dryFoodSubcategories.find(s => s.id === selectedSubcategory)
-        if (subcatConfig?.values?.length > 0) {
-          subcatConfig.values.forEach(val => params.append('subcategory[]', val))
-        }
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllDryFood(data.driedFood || [])
+      } catch (err) {
+        console.error(err)
+        setError('Không tải được sản phẩm thực phẩm khô.')
+      } finally {
+        setLoading(false)
       }
-      
-      const response = await fetch(`YOUR_API_BASE_URL/api/products?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch dry food')
-      
-      const data = await response.json()
-      setProducts(data.products || data)
-      
-    } catch (err) {
-      console.error('Error fetching dry food:', err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
     }
-  }
-  */
-  // ==================== END API INTEGRATION ====================
+    load()
+  }, [])
 
   // Category options for dropdown
   const categories = [
@@ -93,9 +68,6 @@ function DryFoodPage() {
     { id: 'dried-fruit', name: 'Trái Cây Sấy', values: ['dried-fruit'] },
     { id: 'processed', name: 'Khô Chế Biến Sẵn', values: ['processed', 'dried-processed'] },
   ]
-
-  // Get only dry food products
-  const allDryFood = mockProducts.driedFood || []
 
   // Price ranges
   const priceRanges = [

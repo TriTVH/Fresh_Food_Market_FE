@@ -3,50 +3,42 @@ import { Link, useNavigate } from 'react-router-dom'
 import { FiEye, FiEyeOff, FiAlertCircle, FiShoppingBag } from 'react-icons/fi'
 import { FaLeaf, FaStar } from 'react-icons/fa'
 import { useAuth } from '@/context/AuthContext'
-import { MOCK_ACCOUNTS } from '@/utils/constants'
 
 function Login() {
   const navigate = useNavigate()
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setIsLoading(true)
 
-    // Simulate API call delay
-    setTimeout(() => {
-      // Validate credentials
-      const account = MOCK_ACCOUNTS.find(
-        (acc) => acc.email === email && acc.password === password
-      )
-      if (account) {
-        // Login success
-        login({
-          email: account.email,
-          name: account.name,
-          role: account.role,
-        })
-        // Redirect based on role
-        if (account.role === 'admin') {
+    try {
+      const response = await login(phone, password)
+      if (response && response.success) {
+        const role = response.user.role
+        if (role === 'admin') {
           navigate('/admin')
-        } else if (account.role === 'supplier') {
+        } else if (role === 'supplier') {
           navigate('/supplier')
         } else {
           navigate('/')
         }
       } else {
-        // Login failed
-        setError('Email hoặc mật khẩu không chính xác!')
+        setError(response?.error || 'Số điện thoại hoặc mật khẩu không chính xác!')
       }
+    } catch (err) {
+      console.error(err)
+      setError('Số điện thoại hoặc mật khẩu không chính xác!')
+    } finally {
       setIsLoading(false)
-    }, 800)
+    }
   }
 
   return (
@@ -141,45 +133,19 @@ function Login() {
               <p className="text-gray-500">Nhận ưu đãi độc quyền khi đăng nhập ngay hôm nay</p>
             </div>
 
-            {/* Demo Accounts - Compact */}
-            <details className="mb-6">
-              <summary className="cursor-pointer text-sm font-semibold text-[#75b06f] hover:text-[#5a9450] flex items-center gap-2 mb-2 transition-colors">
-                <span>📋</span>
-                <span>Tài khoản demo (click để xem)</span>
-              </summary>
-              <div className="mt-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 space-y-2 border border-gray-200">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600">👤 Khách hàng:</span>
-                  <span className="font-mono bg-white px-2 py-1 rounded text-gray-700">
-                    customer@freshmarket.vn / 123456
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600">🔑 Admin:</span>
-                  <span className="font-mono bg-white px-2 py-1 rounded text-gray-700">
-                    admin@freshmarket.vn / admin123
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600">🚚 Supplier:</span>
-                  <span className="font-mono bg-white px-2 py-1 rounded text-gray-700">
-                    supplier@freshmarket.vn / supplier123
-                  </span>
-                </div>
-              </div>
-            </details>
+
 
             <form className="space-y-5" onSubmit={handleSubmit}>
-              {/* Email Field */}
+              {/* Phone Field */}
               <div>
-                <label className="block text-gray-700 text-sm font-semibold mb-2">Email</label>
+                <label className="block text-gray-700 text-sm font-semibold mb-2">Số điện thoại</label>
                 <input
-                  type="email"
-                  placeholder="Nhập địa chỉ email của bạn"
+                  type="tel"
+                  placeholder="Nhập số điện thoại của bạn"
                   className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#75b06f] focus:border-[#75b06f] transition-all hover:border-gray-300 bg-white"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                 />
               </div>
 

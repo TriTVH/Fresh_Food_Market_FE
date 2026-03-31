@@ -1,306 +1,375 @@
-// ==================== API SERVICE TEMPLATE ====================
-// TODO: Update YOUR_API_BASE_URL with your actual API endpoint
-// Example: const API_BASE_URL = 'http://localhost:8080' or 'https://api.freshmarket.com'
+import { api, getAuthToken, setTokens, clearTokens } from './axiosInstance'
 
-const API_BASE_URL = 'YOUR_API_BASE_URL'
+// Re-export để component khác dùng
+export { getAuthToken } from './axiosInstance'
 
 // ==================== PRODUCT API ====================
 
-/**
- * Fetch all products with optional filters
- * @param {Object} params - Query parameters
- * @param {string} params.category - Category filter (vegetables, fruits, meatSeafood, driedFood)
- * @param {string} params.subcategory - Subcategory filter
- * @param {number} params.page - Page number for pagination
- * @param {number} params.limit - Items per page
- * @param {number} params.minPrice - Minimum price filter
- * @param {number} params.maxPrice - Maximum price filter
- * @param {string} params.search - Search query
- * @returns {Promise<Object>} Products data
- */
-export const fetchProducts = async (params = {}) => {
-    try {
-        const queryParams = new URLSearchParams()
+// Map category_id từ API -> key đang dùng trong FE
+const CATEGORY_MAP = {
+  1: 'vegetables',
+  2: 'fruits',
+  3: 'meatSeafood',
+  4: 'driedFood',
+}
 
-        // Add all non-empty params
-        Object.keys(params).forEach((key) => {
-            if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
-                queryParams.append(key, params[key])
-            }
-        })
+// Map sub_category_id từ API -> key subcategory đang dùng trong FE
+const SUBCATEGORY_MAP = {
+  1: 'leafy', // Rau ăn lá
+  2: 'root', // Củ, Quả
+  3: 'mushroom', // Nấm, Đậu Hũ
+  4: 'vietnam', // Trái Việt Nam
+  5: 'imported', // Trái Nhập Khẩu
+  6: 'seafood', // Hải Sản
+  7: 'pork', // Thịt Heo
+  8: 'beef', // Thịt Bò
+  9: 'poultry', // Thịt Gà, Vịt & Chim
+  10: 'dried-fruit', // Trái Cây Sấy
+  11: 'processed', // Khô Chế Biến Sẵn
+}
 
-        const response = await fetch(`${API_BASE_URL}/api/products?${queryParams}`)
+// Map sub_category_id -> category key (phòng khi field categoryId không chuẩn)
+const SUBCATEGORY_TO_CATEGORY = {
+  1: 'vegetables',
+  2: 'vegetables',
+  3: 'vegetables',
+  4: 'fruits',
+  5: 'fruits',
+  6: 'meatSeafood',
+  7: 'meatSeafood',
+  8: 'meatSeafood',
+  9: 'meatSeafood',
+  10: 'driedFood',
+  11: 'driedFood',
+}
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
+// Convert 1 sản phẩm từ API -> format mockProducts đang dùng trong FE
+const mapApiProductToFrontend = (p) => {
+  const images = p.imagesJson || p.images || []
+  let imageUrl = ''
+  if (Array.isArray(images) && images.length > 0) {
+    const primaryImg = images.find((img) => img.primary)
+    imageUrl = primaryImg?.url || images[0].url || ''
+  }
 
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error fetching products:', error)
-        throw error
-    }
+  const rawCategoryId = p.categoryId ?? p.categoryID ?? p.category_id
+  const rawSubCategoryId = p.subCategoryId ?? p.subCategoryID ?? p.sub_category_id
+
+  const categoryKey = CATEGORY_MAP[rawCategoryId] || SUBCATEGORY_TO_CATEGORY[rawSubCategoryId] || ''
+  const subCategoryKey = SUBCATEGORY_MAP[rawSubCategoryId] || ''
+
+  return {
+    id: p.productId,
+    name: p.productName,
+    category: categoryKey,
+    subcategory: subCategoryKey,
+    price: p.priceSell,
+    originalPrice: null,
+    discount: 0,
+    rating: p.ratingAverage || 0,
+    reviewCount: p.ratingCount || 0,
+    soldCount: p.soldCount || 0,
+    image: imageUrl,
+    isOrganic: p.isOrganic ?? false,
+    inStock: p.isAvailable ?? true,
+  }
 }
 
 /**
- * Fetch single product by ID
- * @param {string|number} productId - Product ID
- * @returns {Promise<Object>} Product data
+ * Lấy toàn bộ sản phẩm active từ API /product/active
+ * Trả về object giống mockProducts: { vegetables: [], fruits: [], meatSeafood: [], driedFood: [] }
  */
-export const fetchProductById = async (productId) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/products/${productId}`)
+export const fetchActiveProductsByCategory = async () => {
+  const { data } = await api.get('/product/active')
+  const list = data?.data || []
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
+  const result = {
+    vegetables: [],
+    fruits: [],
+    meatSeafood: [],
+    driedFood: [],
+  }
 
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error fetching product:', error)
-        throw error
+  list.forEach((raw) => {
+    const prod = mapApiProductToFrontend(raw)
+    if (result[prod.category]) {
+      result[prod.category].push(prod)
     }
+  })
+
+  return result
+}
+
+/**
+ * Lấy danh sách toàn bộ sản phẩm cho màn admin
+ * Tạm thời dùng /product/active vì /product đang lỗi
+ * Trả về mảng raw product từ API
+ */
+export const fetchAllProducts = async () => {
+  const { data } = await api.get('/product/active')
+  return data?.data || data || []
+}
+
+/**
+ * Map 1 bản ghi /product/active -> dòng chọn trong modal lô hàng (tên, giá bán, đơn vị, nguồn).
+ * Giá: priceSell; đơn vị hiển thị: weight + unit (vd 500 + gram -> "500gram") nếu có cả hai.
+ */
+export const mapProductForBatchPicker = (raw) => {
+  const id = raw?.productId ?? raw?.ProductId ?? raw?.product_id
+  if (id == null) return null
+  const name = raw?.productName ?? raw?.ProductName ?? ''
+  const price =
+    Number(raw?.priceSell ?? raw?.PriceSell ?? raw?.price_sell ?? raw?.price ?? raw?.Price ?? 0) || 0
+  const w = raw?.weight ?? raw?.Weight
+  const unitBase = (raw?.unit ?? raw?.Unit ?? '').toString().trim()
+  const wNum = w != null && w !== '' ? Number(w) : NaN
+  const unitLabel =
+    Number.isFinite(wNum) && wNum > 0 && unitBase
+      ? `${String(wNum % 1 === 0 ? Math.trunc(wNum) : wNum)}${unitBase}`
+      : unitBase || '—'
+  const origin = raw?.manufacturingLocation ?? raw?.ManufacturingLocation ?? raw?.origin ?? '—'
+  // Backend field cho tồn kho/số lượng còn lại có thể khác nhau theo dự án:
+  // ưu tiên các field "remaining*", sau đó fallback sang "quantity/qty".
+  const remainingRaw =
+    raw?.remainingQuantity ??
+    raw?.RemainingQuantity ??
+    raw?.remaining ??
+    raw?.Remaining ??
+    raw?.availableQuantity ??
+    raw?.AvailableQuantity ??
+    raw?.quantity ??
+    raw?.Quantity ??
+    raw?.qty ??
+    raw?.Qty ??
+    null
+  const remaining =
+    remainingRaw == null || remainingRaw === '' ? null : Number(remainingRaw)
+
+  return {
+    id,
+    name,
+    price,
+    unit: unitLabel,
+    origin,
+    remaining: Number.isFinite(remaining) ? remaining : null,
+  }
+}
+
+/**
+ * Lấy chi tiết 1 sản phẩm theo id (GET /product/{id})
+ */
+export const fetchProductDetail = async (productId) => {
+  const { data } = await api.get(`/product/${productId}`)
+  // API trả { success, message, data, statusCode }
+  return data?.data || data
+}
+
+/**
+ * Danh sách nhà cung cấp (GET /supplier)
+ * Mỗi phần tử: { supplierId, name, address, phone, ... }
+ */
+export const fetchSuppliers = async () => {
+  const { data } = await api.get('/supplier')
+  return Array.isArray(data?.data) ? data.data : []
+}
+
+/**
+ * Tạo lô hàng (POST /batch)
+ * Body: { supplierId: number, items: { productId: number, quantity: number }[] }
+ */
+export const createBatch = async (payload) => {
+  const { data } = await api.post('/batch', payload)
+  return data
+}
+
+/**
+ * Danh sách lô hàng (GET /batch)
+ */
+export const fetchBatches = async () => {
+  // Cache-bust: sau POST tạo lô, một số môi trường có thể trả list cũ nếu không ép tải lại.
+  const { data } = await api.get('/batch', { params: { _t: Date.now() } })
+  return Array.isArray(data?.data) ? data.data : []
+}
+
+/**
+ * Chi tiết 1 lô (GET /batch/{id})
+ */
+export const fetchBatchById = async (batchId) => {
+  const { data } = await api.get(`/batch/${batchId}`)
+  return data?.data ?? data
+}
+
+/** BatchAction (backend enum): Confirm=0, Delivery=1, Complete=2, Cancel=3 */
+export const BATCH_ACTION = {
+  Confirm: 0,
+  Delivery: 1,
+  Complete: 2,
+  Cancel: 3,
+}
+
+/**
+ * Dòng items PUT /batch: backend C# thường bind `ExpiredDate`, `BatchDetailId`.
+ * Gửi kèm camelCase để tương thích axios/JSON mặc định.
+ */
+export const buildBatchDetailItemPayload = ({ id, quantity, expiredDate }) => {
+  const exp =
+    expiredDate == null || expiredDate === ''
+      ? null
+      : String(expiredDate).trim().slice(0, 10)
+  const n = Math.floor(Number(quantity)) || 0
+  const detailId = id
+  return {
+    id: detailId,
+    batchDetailId: detailId,
+    quantity: n,
+    expiredDate: exp,
+    ExpiredDate: exp,
+  }
+}
+
+/**
+ * Cập nhật lô (PUT /batch) — action: BATCH_ACTION.*
+ * Body: { id, action, items?, imagesJson?, cancelReason? }
+ * items[]: { id, quantity, expiredDate? } (batch detail id + số lượng + HSD YYYY-MM-DD)
+ */
+export const updateBatch = async (payload) => {
+  const { data } = await api.put('/batch', payload)
+  return data
+}
+
+/**
+ * Upload 1 ảnh lên Cloudinary (unsigned upload)
+ * Trả về URL ảnh.
+ */
+export const uploadImageToCloudinary = async (file) => {
+  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+  const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+  if (!cloudName || !uploadPreset) {
+    throw new Error('Thiếu cấu hình Cloudinary (CLOUD_NAME hoặc UPLOAD_PRESET).')
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('upload_preset', uploadPreset)
+
+  const axios = (await import('axios')).default
+  const { data } = await axios.post(
+    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+    formData
+  )
+  return data.secure_url || data.url
+}
+
+/**
+ * Tạo sản phẩm mới (POST /product)
+ * body theo swagger backend.
+ */
+export const createProduct = async (payload) => {
+  const { data } = await api.post('/product', payload)
+  return data
+}
+
+/**
+ * Cập nhật sản phẩm (PUT /product)
+ * body theo swagger backend.
+ */
+export const updateProduct = async (payload) => {
+  const { data } = await api.put('/product', payload)
+  return data
 }
 
 // ==================== CART API ====================
 
-/**
- * Get user's cart
- * @returns {Promise<Object>} Cart data
- */
 export const fetchCart = async () => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/cart`, {
-            headers: {
-                'Authorization': `Bearer ${getAuthToken()}`, // TODO: Implement getAuthToken()
-            },
-        })
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error fetching cart:', error)
-        throw error
-    }
+  const { data } = await api.get('/api/cart')
+  return data
 }
 
-/**
- * Add item to cart
- * @param {Object} item - Cart item
- * @param {string|number} item.productId - Product ID
- * @param {number} item.quantity - Quantity
- * @returns {Promise<Object>} Updated cart
- */
 export const addToCart = async (item) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/cart/add`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${getAuthToken()}`,
-            },
-            body: JSON.stringify(item),
-        })
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error adding to cart:', error)
-        throw error
-    }
+  const { data } = await api.post('/api/cart/add', item)
+  return data
 }
 
-/**
- * Update cart item quantity
- * @param {string|number} itemId - Cart item ID
- * @param {number} quantity - New quantity
- * @returns {Promise<Object>} Updated cart
- */
 export const updateCartItem = async (itemId, quantity) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/cart/update/${itemId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${getAuthToken()}`,
-            },
-            body: JSON.stringify({ quantity }),
-        })
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error updating cart item:', error)
-        throw error
-    }
+  const { data } = await api.put(`/api/cart/update/${itemId}`, { quantity })
+  return data
 }
 
-/**
- * Remove item from cart
- * @param {string|number} itemId - Cart item ID
- * @returns {Promise<Object>} Updated cart
- */
 export const removeFromCart = async (itemId) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/cart/remove/${itemId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${getAuthToken()}`,
-            },
-        })
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error removing from cart:', error)
-        throw error
-    }
+  const { data } = await api.delete(`/api/cart/remove/${itemId}`)
+  return data
 }
 
 // ==================== AUTH API ====================
 
 /**
- * Login user
- * @param {Object} credentials
- * @param {string} credentials.email - User email
- * @param {string} credentials.password - User password
- * @returns {Promise<Object>} Auth data with token
+ * Login (phone + password). Response: { success, message, data: { token, refreshToken, role, username, ... } }
  */
 export const login = async (credentials) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(credentials),
-        })
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-
-        // Store token (adjust based on your auth strategy)
-        if (data.token) {
-            localStorage.setItem('authToken', data.token)
-        }
-
-        return data
-    } catch (error) {
-        console.error('Error logging in:', error)
-        throw error
-    }
+  const { data } = await api.post('/auth/login', credentials)
+  const token = data?.data?.token ?? data?.data?.accessToken ?? data?.data?.access_token ?? data?.token ?? data?.accessToken
+  const refreshToken = data?.data?.refreshToken ?? data?.data?.refresh_token ?? data?.refreshToken
+  if (token) setTokens(token, refreshToken)
+  return data
 }
 
 /**
- * Register new user
- * @param {Object} userData
- * @param {string} userData.email - User email
- * @param {string} userData.password - User password
- * @param {string} userData.name - User name
- * @returns {Promise<Object>} Auth data
+ * Register. Body: phone, password; optional: email, username
  */
 export const register = async (userData) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(userData),
-        })
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error registering:', error)
-        throw error
-    }
+  const { data } = await api.post('/auth/register', {
+    phone: userData.phone,
+    password: userData.password,
+    email: userData.email || undefined,
+    username: userData.fullName || undefined,
+  })
+  return data
 }
 
 /**
- * Logout user
- * @returns {Promise<void>}
+ * Logout: gọi API (nếu có) và xóa token local
  */
 export const logout = async () => {
-    try {
-        await fetch(`${API_BASE_URL}/api/auth/logout`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${getAuthToken()}`,
-            },
-        })
-
-        // Clear token
-        localStorage.removeItem('authToken')
-    } catch (error) {
-        console.error('Error logging out:', error)
-        throw error
-    }
+  try {
+    await api.post('/auth/logout')
+  } catch (_) {
+    // ignore
+  }
+  clearTokens()
 }
 
 /**
- * Get current user
- * @returns {Promise<Object>} User data
+ * Refresh token (gọi tay khi cần; bình thường interceptor tự xử lý 401)
  */
-export const getCurrentUser = async () => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-            headers: {
-                'Authorization': `Bearer ${getAuthToken()}`,
-            },
-        })
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error fetching current user:', error)
-        throw error
-    }
-}
-
-// ==================== HELPER FUNCTIONS ====================
-
-/**
- * Get auth token from localStorage
- * @returns {string|null} Auth token
- */
-const getAuthToken = () => {
-    return localStorage.getItem('authToken')
+export const refreshAuthToken = async () => {
+  const axios = (await import('axios')).default
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) throw new Error('No refresh token found')
+  const { data } = await axios.post(
+    `${api.defaults.baseURL}/auth/refresh`,
+    { refreshToken },
+    { headers: { 'Content-Type': 'application/json' } }
+  )
+  const token = data?.token ?? data?.data?.token
+  const newRefresh = data?.refreshToken ?? data?.data?.refreshToken
+  if (token) setTokens(token, newRefresh)
+  return data
 }
 
 /**
  * Check if user is authenticated
- * @returns {boolean}
  */
-export const isAuthenticated = () => {
-    return !!getAuthToken()
+export const isAuthenticated = () => !!getAuthToken()
+
+/**
+ * Lấy message lỗi từ ApiResponse backend (Success, Message, Data, StatusCode).
+ * Hỗ trợ cả message (camelCase) và Message (PascalCase).
+ * @param {*} err - Error từ axios (err.response.data là body API)
+ * @returns {string} - Thông báo lỗi để hiển thị
+ */
+export const getApiErrorMessage = (err) => {
+  const data = err?.response?.data
+  if (!data) return null
+  const msg = data.message ?? data.Message
+  return typeof msg === 'string' && msg.trim() ? msg.trim() : null
 }

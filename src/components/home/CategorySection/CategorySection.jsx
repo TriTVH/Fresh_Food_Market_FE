@@ -1,11 +1,39 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { FiArrowRight } from 'react-icons/fi'
 import CategoryTabs from '@components/product/CategoryTabs/CategoryTabs'
 import ProductCard from '@components/product/ProductCard/ProductCard'
 
 function CategorySection({ title, tabs, products }) {
   const [activeTab, setActiveTab] = useState(0)
+
+  const navigate = useNavigate();
+
+  const tabAt = (i) => tabs[i]
+  const subcategoryForTab = (tab) => {
+    if (tab == null) return null
+    return typeof tab === 'string' ? tab : tab?.slug ?? null
+  }
+
+  const filteredProducts =
+    activeTab === 0
+      ? products
+      : products.filter((p) => {
+          const slug = subcategoryForTab(tabAt(activeTab))
+          return slug != null && slug !== '' && p.subcategory === slug
+        })
+
+  // Route mapping based on category title
+  const handleViewAll = () => {
+    const t = title.toLowerCase();
+    if (t.includes('rau')) navigate('/vegetables');
+    else if (t.includes('trái') || t.includes('quả')) navigate('/fruits');
+    else if (t.includes('hải sản') || t.includes('thịt')) navigate('/seafood-meat');
+    else if (t.includes('khô')) navigate('/dry-food');
+    else navigate('/products');
+  };
   
+
   return (
     <section className="py-12">
       <div className="container mx-auto px-4">
@@ -14,7 +42,10 @@ function CategorySection({ title, tabs, products }) {
           <h2 className="text-3xl font-display font-bold text-gray-800">
             {title}
           </h2>
-          <button className="flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium transition-colors">
+          <button 
+            onClick={handleViewAll}
+            className="flex items-center gap-2 text-[#75b06f] hover:text-[#5a9450] font-medium transition-colors"
+          >
             Xem tất cả
             <FiArrowRight className="w-5 h-5" />
           </button>
@@ -31,7 +62,7 @@ function CategorySection({ title, tabs, products }) {
         
         {/* Product Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {products.map((product) => (
+          {filteredProducts.slice(0, 8).map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>

@@ -11,7 +11,7 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { mockProducts } from '@/utils/mockData'
+import { fetchActiveProductsByCategory } from '@/api/apiService'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -32,50 +32,32 @@ function ProductsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
-
-  // ==================== API INTEGRATION (FUTURE) ====================
-  // TODO: Uncomment when API is ready, then remove Mock Data section below
-  /*
-  const [products, setProducts] = useState([])
+  const [allProductsRaw, setAllProductsRaw] = useState({
+    vegetables: [],
+    fruits: [],
+    meatSeafood: [],
+    driedFood: [],
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const productsPerPage = 12
 
   useEffect(() => {
-    fetchProducts()
-  }, [selectedCategory, currentPage])
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      // Build query params
-      const params = new URLSearchParams({
-        page: currentPage,
-        limit: productsPerPage,
-      })
-      
-      if (selectedCategory !== 'all') {
-        params.append('category', selectedCategory)
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllProductsRaw(data)
+      } catch (err) {
+        console.error(err)
+        setError('Không tải được danh sách sản phẩm.')
+      } finally {
+        setLoading(false)
       }
-      
-      // API Call
-      const response = await fetch(`YOUR_API_BASE_URL/api/products?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch products')
-      
-      const data = await response.json()
-      setProducts(data.products || data) // Adjust based on your API response structure
-      
-    } catch (err) {
-      console.error('Error fetching products:', err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
     }
-  }
-  */
-  // ==================== END API INTEGRATION ====================
-  const productsPerPage = 12
+    load()
+  }, [])
 
   const categories = [
     { id: 'all', name: 'Tất Cả Sản Phẩm', path: '/products' },
@@ -92,21 +74,21 @@ function ProductsPage() {
     { id: 'imported', name: 'Trái Nhập Khẩu' },
   ]
 
-  // Combine all products
+  // Combine all products từ API
   const allProducts = useMemo(() => {
     let products = []
     if (selectedCategory === 'all') {
       products = [
-        ...mockProducts.vegetables,
-        ...mockProducts.fruits,
-        ...mockProducts.meatSeafood,
-        ...mockProducts.driedFood,
+        ...(allProductsRaw.vegetables || []),
+        ...(allProductsRaw.fruits || []),
+        ...(allProductsRaw.meatSeafood || []),
+        ...(allProductsRaw.driedFood || []),
       ]
     } else {
-      products = mockProducts[selectedCategory] || []
+      products = allProductsRaw[selectedCategory] || []
     }
     return products
-  }, [selectedCategory])
+  }, [selectedCategory, allProductsRaw])
 
   // Price ranges
   const priceRanges = [

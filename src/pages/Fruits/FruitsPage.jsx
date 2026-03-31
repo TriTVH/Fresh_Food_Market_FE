@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiChevronRight,
@@ -11,7 +11,7 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { mockProducts } from '@/utils/mockData'
+import { fetchActiveProductsByCategory } from '@/api/apiService'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -32,48 +32,26 @@ function FruitsPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
-
-  // ==================== API INTEGRATION (FUTURE) ====================
-  // TODO: Uncomment when API is ready, then remove Mock Data section below
-  /*
-  const [products, setProducts] = useState([])
+  const [allFruits, setAllFruits] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetchFruits()
-  }, [selectedSubcategory, currentPage])
-
-  const fetchFruits = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      const params = new URLSearchParams({
-        category: 'fruits',
-        page: currentPage,
-        limit: productsPerPage,
-      })
-      
-      if (selectedSubcategory !== 'all') {
-        params.append('subcategory', selectedSubcategory)
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllFruits(data.fruits || [])
+      } catch (err) {
+        console.error(err)
+        setError('Không tải được sản phẩm trái cây.')
+      } finally {
+        setLoading(false)
       }
-      
-      const response = await fetch(`YOUR_API_BASE_URL/api/products?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch fruits')
-      
-      const data = await response.json()
-      setProducts(data.products || data)
-      
-    } catch (err) {
-      console.error('Error fetching fruits:', err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
     }
-  }
-  */
-  // ==================== END API INTEGRATION ====================
+    load()
+  }, [])
 
   // Category options for dropdown
   const categories = [
@@ -90,9 +68,6 @@ function FruitsPage() {
     { id: 'vietnam', name: 'Trái Việt Nam' },
     { id: 'imported', name: 'Trái Nhập Khẩu' },
   ]
-
-  // Get only fruits products
-  const allFruits = mockProducts.fruits || []
 
   // Price ranges
   const priceRanges = [

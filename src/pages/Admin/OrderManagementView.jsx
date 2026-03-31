@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { FiSearch, FiX, FiChevronDown } from 'react-icons/fi'
+import { FiSearch, FiX, FiChevronDown, FiCheck } from 'react-icons/fi'
+import { toast } from 'react-toastify'
 
 const PRIMARY = '#75b06f'
 const PRIMARY_DARK = '#5a9450'
@@ -89,8 +90,18 @@ function StatusBadge({ status }) {
 // ── Order Detail Modal ──
 const ALL_STATUSES = ['Chờ xác nhận', 'Đang đóng gói', 'Đang giao', 'Hoàn thành', 'Đã hủy']
 
+const SUCCESS_STATUS = 'Hoàn thành'
+/** Chỉ khi đang giao mới cho admin đánh dấu hoàn thành */
+const DELIVERING_STATUS = 'Đang giao'
+
 function OrderDetailModal({ order, onClose, onUpdateStatus }) {
   const totalCalc = order.items.reduce((s, i) => s + i.qty * i.price, 0)
+  const canMarkSuccess = order.status === DELIVERING_STATUS
+
+  const markSuccess = () => {
+    onUpdateStatus(order.id, SUCCESS_STATUS)
+    toast.success('Đã cập nhật trạng thái đơn hàng thành Hoàn thành.')
+  }
 
   const customerFields = [
     { icon: '\ud83d\udc64', label: 'Họ và tên', value: order.customer },
@@ -201,8 +212,37 @@ function OrderDetailModal({ order, onClose, onUpdateStatus }) {
           </div>
 
           {/* Footer */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button onClick={onClose} style={{ padding: '11px 32px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Đóng</button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+            {canMarkSuccess && (
+              <button
+                type="button"
+                onClick={markSuccess}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '11px 22px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`,
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(117,176,111,0.4)',
+                }}
+              >
+                <FiCheck size={18} />
+                Hoàn thành đơn hàng
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ padding: '11px 32px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+            >
+              Đóng
+            </button>
           </div>
         </div>
       </div>
@@ -219,7 +259,8 @@ export default function OrderManagementView() {
   const [detailOrder, setDetailOrder] = useState(null)
 
   const handleUpdateStatus = (id, newStatus) => {
-    setOrders((prev) => prev.map((o) => o.id === id ? { ...o, status: newStatus } : o))
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o)))
+    setDetailOrder((prev) => (prev && prev.id === id ? { ...prev, status: newStatus } : prev))
   }
 
   const allStatuses = ['Tất cả', ...Object.keys(STATUS_CFG)]
@@ -350,12 +391,42 @@ export default function OrderManagementView() {
                   <StatusBadge status={o.status} />
                 </td>
                 <td style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                  <button
-                    onClick={() => setDetailOrder(o)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 1px 4px rgba(117,176,111,0.35)' }}
-                  >
-                    👁 Chi tiết
-                  </button>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setDetailOrder(o)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 1px 4px rgba(117,176,111,0.35)' }}
+                    >
+                      👁 Chi tiết
+                    </button>
+                    {o.status === DELIVERING_STATUS && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleUpdateStatus(o.id, SUCCESS_STATUS)
+                          toast.success('Đã cập nhật trạng thái đơn hàng thành Hoàn thành.')
+                        }}
+                        title="Đánh dấu đơn giao thành công"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          padding: '7px 12px',
+                          borderRadius: 8,
+                          border: `1.5px solid ${PRIMARY}55`,
+                          background: '#f0fdf4',
+                          color: PRIMARY_DARK,
+                          fontWeight: 700,
+                          fontSize: 12.5,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <FiCheck size={15} />
+                        Hoàn thành
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -371,10 +442,7 @@ export default function OrderManagementView() {
         <OrderDetailModal
           order={detailOrder}
           onClose={() => setDetailOrder(null)}
-          onUpdateStatus={(id, status) => {
-            handleUpdateStatus(id, status)
-            setDetailOrder(null)
-          }}
+          onUpdateStatus={handleUpdateStatus}
         />
       )}
     </div>

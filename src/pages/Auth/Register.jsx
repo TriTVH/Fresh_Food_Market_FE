@@ -4,6 +4,8 @@ import { FiMail, FiLock, FiEye, FiEyeOff, FiUser, FiPhone } from 'react-icons/fi
 import { FcGoogle } from 'react-icons/fc'
 import { FaFacebook } from 'react-icons/fa'
 import { useAuth } from '@/context/AuthContext'
+import { register as registerApi, login as loginApi } from '@/api/apiService'
+import { ROLE_ID, getRoleName } from '@/utils/constants'
 
 function Register() {
   const navigate = useNavigate()
@@ -21,7 +23,7 @@ function Register() {
     agreeToTerms: false,
   })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
@@ -37,17 +39,48 @@ function Register() {
 
     setIsLoading(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
-      // Auto login after registration
-      login({
+    try {
+      const registerResponse = await registerApi({
+        fullName: formData.fullName,
         email: formData.email,
-        name: formData.fullName,
-        role: 'customer',
+        phone: formData.phone,
+        password: formData.password,
       })
+
+      if (!registerResponse?.success) {
+        throw new Error(registerResponse?.message || 'Đăng ký thất bại')
+      }
+
+      // Đăng nhập luôn sau khi đăng ký
+      const loginResponse = await loginApi({
+        phone: formData.phone,
+        password: formData.password,
+      })
+
+      if (!loginResponse?.success) {
+        throw new Error(loginResponse?.message || 'Đăng nhập sau đăng ký thất bại')
+      }
+
+      const account = loginResponse.data
+      const roleId = account?.role ?? ROLE_ID.CUSTOMER
+      const role = getRoleName(roleId)
+
+      login({
+        id: account?.accountId,
+        phone: account?.phone,
+        email: account?.email,
+        name: account?.username || formData.fullName,
+        roleId,
+        role,
+      })
+
       navigate('/')
-    }, 1500)
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Có lỗi xảy ra, vui lòng thử lại!')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleChange = (e) => {

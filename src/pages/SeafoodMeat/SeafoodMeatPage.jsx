@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiChevronRight,
@@ -11,7 +11,7 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { mockProducts } from '@/utils/mockData'
+import { fetchActiveProductsByCategory } from '@/api/apiService'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -32,51 +32,26 @@ function SeafoodMeatPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
-
-  // ==================== API INTEGRATION (FUTURE) ====================
-  // TODO: Uncomment when API is ready, then remove Mock Data section below
-  /*
-  const [products, setProducts] = useState([])
+  const [allSeafoodMeat, setAllSeafoodMeat] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetchSeafoodMeat()
-  }, [selectedSubcategory, currentPage])
-
-  const fetchSeafoodMeat = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      const params = new URLSearchParams({
-        category: 'meatSeafood',
-        page: currentPage,
-        limit: productsPerPage,
-      })
-      
-      if (selectedSubcategory !== 'all') {
-        const subcatConfig = seafoodMeatSubcategories.find(s => s.id === selectedSubcategory)
-        if (subcatConfig?.values?.length > 0) {
-          subcatConfig.values.forEach(val => params.append('subcategory[]', val))
-        }
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllSeafoodMeat(data.meatSeafood || [])
+      } catch (err) {
+        console.error(err)
+        setError('Không tải được sản phẩm thịt, cá & hải sản.')
+      } finally {
+        setLoading(false)
       }
-      
-      const response = await fetch(`YOUR_API_BASE_URL/api/products?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch seafood & meat')
-      
-      const data = await response.json()
-      setProducts(data.products || data)
-      
-    } catch (err) {
-      console.error('Error fetching seafood & meat:', err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
     }
-  }
-  */
-  // ==================== END API INTEGRATION ====================
+    load()
+  }, [])
 
   // Category options for dropdown
   const categories = [
@@ -95,9 +70,6 @@ function SeafoodMeatPage() {
     { id: 'beef', name: 'Thịt Bò', values: ['beef'] },
     { id: 'poultry', name: 'Thịt Gà, Vịt & Chim', values: ['chicken', 'duck', 'poultry'] },
   ]
-
-  // Get only seafood and meat products
-  const allSeafoodMeat = mockProducts.meatSeafood || []
 
   // Price ranges
   const priceRanges = [

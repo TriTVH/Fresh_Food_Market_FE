@@ -1,6 +1,16 @@
-import { useState } from 'react'
-import { FiSearch, FiPlus, FiEye, FiCheckSquare, FiX, FiChevronDown, FiChevronRight } from 'react-icons/fi'
-import { FiHash } from 'react-icons/fi'
+import { useState, useEffect, useRef } from 'react'
+import { FiSearch, FiPlus, FiEye, FiX, FiChevronDown, FiCheck } from 'react-icons/fi'
+import BatchDetailModal from '@/components/batch/BatchDetailModal'
+import CompleteBatchModal from '@/components/batch/CompleteBatchModal'
+import {
+  fetchSuppliers,
+  fetchAllProducts,
+  mapProductForBatchPicker,
+  createBatch,
+  getApiErrorMessage,
+  fetchBatches,
+} from '@/api/apiService'
+import { toast } from 'react-toastify'
 
 const PRIMARY = '#75b06f'
 const PRIMARY_DARK = '#5a9450'
@@ -21,52 +31,328 @@ const iconBtn = (color) => ({
 
 function fmt(n) { return Number(n).toLocaleString('vi-VN') + 'đ' }
 
-const INIT_BATCHES = [
-  {
-    id: 'BATCH-2026-002', supplier: 'Nguyễn Văn A', phone: '0912345678',
-    totalQty: 90, totalValue: 8940000,
-    createdDate: '12/1/2026', deliveryDate: '12/1/2026', status: 'Đang Giao',
-    items: [
-      { product: 'Bơ Booth', qty: 60, remaining: 60, price: 89000, expiry: '25/1/2026' },
-      { product: 'Đậu Tây Đà Lạt', qty: 30, remaining: 30, price: 120000, expiry: '25/1/2026' },
-    ],
-  },
-  {
-    id: 'BATCH-2026-001', supplier: 'Nguyễn Văn B', phone: '0987654321',
-    totalQty: 80, totalValue: 2750000,
-    createdDate: '10/1/2026', deliveryDate: '10/1/2026', status: 'Hoàn Thành',
-    items: [
-      { product: 'Táo Fuji Nhật Bản', qty: 80, remaining: 80, price: 95000, expiry: '20/2/2026' },
-    ],
-  },
+/** Tên hiển thị trong modal lô hàng: bỏ hậu tố "(500 gram)", "(1.5 kilogram)"… */
+export function batchProductDisplayName(name) {
+  if (!name || typeof name !== 'string') return name || ''
+  return name
+    .replace(/\s*\([^)]*(?:gram|kilogram|kilôgam|ký|kg)\b[^)]*\)\s*$/i, '')
+    .trim()
+}
+
+/** Trạng thái API + nhãn lọc */
+const BATCH_STATUS_FILTERS = [
+  { value: '', label: 'Tất cả trạng thái' },
+  { value: 'PENDING', label: 'Chờ xử lý (PENDING)' },
+  { value: 'PACKAGING', label: 'Đóng gói (PACKAGING)' },
+  { value: 'DELIVERING', label: 'Đang giao (DELIVERING)' },
+  { value: 'COMPLETED', label: 'Hoàn thành (COMPLETED)' },
+  { value: 'CANCELED', label: 'Đã hủy (CANCELED)' },
 ]
 
-// Product catalog for batch picking
-const CATALOG = [
-  { id: 'P001', name: 'Xà Lách Tươi', price: 28000, unit: '500gram', origin: 'Đà Lạt, Việt Nam' },
-  { id: 'P002', name: 'Cà Chua Bi', price: 45000, unit: '500gram', origin: 'Đà Lạt, Việt Nam' },
-  { id: 'P003', name: 'Bơ Booth', price: 89000, unit: 'Trái', origin: 'Úc' },
-  { id: 'P004', name: 'Cá Hồi Nauy Phi Lê', price: 291000, unit: '100gram', origin: 'Na Uy' },
-  { id: 'P005', name: 'Thịt Bò Úc Thăn Nội', price: 350000, unit: '500gram', origin: 'Úc' },
-  { id: 'P006', name: 'Táo Fuji Nhật Bản', price: 95000, unit: '500gram', origin: 'Nhật Bản' },
-  { id: 'P007', name: 'Tôm Sú Sống', price: 185000, unit: '500gram', origin: 'Việt Nam' },
-  { id: 'P008', name: 'Rau Cải Xanh Đà Lạt', price: 22000, unit: '300gram', origin: 'Đà Lạt, Việt Nam' },
-]
+const BATCH_STATUS_LABEL_VI = {
+  PENDING: 'Chờ xử lý',
+  PACKAGING: 'Đóng gói',
+  DELIVERING: 'Đang giao',
+  COMPLETED: 'Hoàn thành',
+  CANCELED: 'Đã hủy',
+}
+
+function normalizeBatchStatus(raw) {
+  const s = (raw ?? '').toString().trim().toUpperCase()
+  return s || 'PENDING'
+}
+
+export function labelBatchStatus(code) {
+  return BATCH_STATUS_LABEL_VI[code] || code
+}
+
+/**
+ * Ngày từ API -> yyyy-MM-dd cho <input type="date"> (theo local, tránh lệch ngày do UTC khi dùng toISOString).
+ */
+export function batchDetailDateToInputValue(raw) {
+  if (raw == null || raw === '') return ''
+  const s = String(raw).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const dt = new Date(s)
+  if (Number.isNaN(dt.getTime())) return ''
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const day = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/**
+ * Tạo `items[]` cho PUT /batch với action Confirm từ response GET /batch/{id}.
+ */
+export function buildConfirmItemsFromBatchApi(raw) {
+  const details = raw?.batchDetails ?? raw?.BatchDetails ?? []
+  if (!Array.isArray(details)) return []
+  return details
+    .map((d) => {
+      const id = d?.batchDetailId ?? d?.BatchDetailId
+      if (id == null) return null
+      const qty = Number(d?.quantity ?? d?.Quantity ?? 0) || 0
+      const exp =
+        d?.expiredDate ?? d?.ExpiredDate ?? d?.expiryDate ?? d?.ExpiryDate ?? d?.expiry ?? d?.Expiry
+      const expiredDate = exp ? batchDetailDateToInputValue(exp) : null
+      return { id, quantity: qty, expiredDate: expiredDate || null }
+    })
+    .filter(Boolean)
+}
+
+/** Dòng form xác nhận lô: SL yêu cầu + SL/HSD chỉnh sửa (PUT /batch items: id, quantity, expiredDate) */
+export function buildConfirmFormRowsFromBatchApi(raw) {
+  const details = raw?.batchDetails ?? raw?.BatchDetails ?? []
+  if (!Array.isArray(details)) return []
+  return details
+    .map((d) => {
+      const id = d?.batchDetailId ?? d?.BatchDetailId
+      if (id == null) return null
+      const requiredQty = Number(d?.quantity ?? d?.Quantity ?? 0) || 0
+      const exp =
+        d?.expiredDate ?? d?.ExpiredDate ?? d?.expiryDate ?? d?.ExpiryDate ?? d?.expiry ?? d?.Expiry
+      const expiredDate = exp ? batchDetailDateToInputValue(exp) : ''
+      const rawName = d?.productName ?? d?.ProductName ?? ''
+      const productName =
+        typeof rawName === 'string' && rawName.trim()
+          ? batchProductDisplayName(rawName) || rawName
+          : '—'
+      return {
+        id,
+        productName,
+        requiredQty,
+        quantity: requiredQty,
+        expiredDate,
+      }
+    })
+    .filter(Boolean)
+}
+
+function formatBatchDate(iso) {
+  if (iso == null || iso === '') return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('vi-VN')
+}
+
+export function batchStatusBadgeStyle(code) {
+  switch (code) {
+    case 'COMPLETED':
+      return { bg: '#f0fdf4', color: PRIMARY_DARK, border: `${PRIMARY}40` }
+    case 'CANCELED':
+      return { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' }
+    case 'DELIVERING':
+      return { bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' }
+    case 'PACKAGING':
+      return { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' }
+    case 'PENDING':
+    default:
+      return { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' }
+  }
+}
+
+function mapBatchDetailToItem(d) {
+  const qty = Number(d?.quantity ?? d?.qty ?? d?.Quantity ?? 0) || 0
+  const price = Number(d?.price ?? d?.unitPrice ?? d?.priceSell ?? d?.Price ?? 0) || 0
+  const remaining = d?.remainingQuantity ?? d?.remaining ?? d?.RemainingQuantity ?? qty
+  const rawName = d?.productName ?? d?.ProductName ?? d?.product?.productName ?? d?.name ?? ''
+  const name =
+    typeof rawName === 'string' && rawName.trim()
+      ? batchProductDisplayName(rawName) || rawName
+      : '—'
+  let expiry = '—'
+  const exp = d?.expiryDate ?? d?.expiry ?? d?.ExpiryDate ?? d?.expiredDate ?? d?.ExpiredDate
+  if (exp) expiry = formatBatchDate(exp)
+  return {
+    product: typeof name === 'string' ? batchProductDisplayName(name) || name : '—',
+    qty,
+    remaining: Number(remaining) || qty,
+    price,
+    expiry,
+  }
+}
+
+function normalizeBatchNotes(raw) {
+  if (raw == null) return null
+
+  let obj = raw
+  if (typeof raw === 'string') {
+    const s = raw.trim()
+    if (!s) return null
+    try {
+      obj = JSON.parse(s)
+    } catch {
+      return {
+        insufficientSupplyNote: [],
+        unprovidedProducts: [],
+        completedSupplyStats: [],
+        cancelInfo: null,
+        _unparsedNotesText: s,
+      }
+    }
+  }
+
+  if (typeof obj !== 'object' || obj === null) return null
+
+  const insufficient = obj.insufficientSupplyNote ?? obj.InsufficientSupplyNote
+  const unprovided =
+    obj.unprovidedProducts ??
+    obj.UnprovidedProducts ??
+    obj.undeliverableSupplies ??
+    obj.UndeliverableSupplies
+  const completed = obj.completedSupplyStats ?? obj.CompletedSupplyStats
+  const cancel = obj.cancelInfo ?? obj.CancelInfo
+  return {
+    insufficientSupplyNote: Array.isArray(insufficient) ? insufficient : [],
+    unprovidedProducts: Array.isArray(unprovided) ? unprovided : [],
+    completedSupplyStats: Array.isArray(completed) ? completed : [],
+    cancelInfo: cancel && typeof cancel === 'object' ? cancel : null,
+  }
+}
+
+export function mapApiBatchToUi(raw) {
+  const batchId = raw?.batchId ?? raw?.BatchId
+  const code = (raw?.batchCode ?? raw?.batch_code ?? '').toString().trim()
+  const id = code || (batchId != null ? `BATCH-${batchId}` : `batch-${batchId ?? 'local'}`)
+  const status = normalizeBatchStatus(raw?.status ?? raw?.Status)
+  let details = raw?.batchDetails ?? raw?.BatchDetails
+  if (details == null) details = []
+  if (!Array.isArray(details)) details = [details]
+  const items = details.filter(Boolean).map(mapBatchDetailToItem)
+  const totalPrice = raw?.totalPrice ?? raw?.TotalPrice
+  const totalValue = totalPrice != null && totalPrice !== '' ? Number(totalPrice) : items.reduce((s, it) => s + it.qty * it.price, 0)
+  const imgs = raw?.imageConfirmReceived ?? raw?.ImageConfirmReceived
+  const imageConfirmReceived = Array.isArray(imgs) ? imgs : []
+
+  return {
+    id,
+    batchId,
+    supplier: raw?.supplierName ?? raw?.SupplierName ?? '—',
+    phone: raw?.supplierPhone ?? raw?.SupplierPhone ?? '',
+    supplierAddress: raw?.supplierAddress ?? raw?.SupplierAddress ?? '',
+    supplyBy: raw?.supplyBy ?? raw?.SupplyBy ?? null,
+    totalQty: Number(raw?.totalItems ?? raw?.TotalItems ?? items.reduce((s, it) => s + it.qty, 0)) || 0,
+    totalValue,
+    createdDate: formatBatchDate(raw?.createdDate ?? raw?.CreatedDate),
+    updatedDate: formatBatchDate(raw?.updatedDate ?? raw?.UpdatedDate),
+    deliveryDate: formatBatchDate(raw?.deliveredDate ?? raw?.DeliveredDate),
+    status,
+    items,
+    notes: normalizeBatchNotes(raw?.notes ?? raw?.Notes),
+    imageConfirmReceived,
+    _raw: raw,
+  }
+}
+
+function normalizeSupplier(raw) {
+  const supplierId = raw?.supplierId ?? raw?.supplier_id
+  if (supplierId == null) return null
+  return {
+    supplierId,
+    name: raw?.name ?? '',
+    phone: raw?.phone ?? '',
+    address: raw?.address ?? '',
+  }
+}
 
 // ── Add Batch Modal ──
 function AddBatchModal({ onClose, onConfirm, batchCount }) {
   const autoId = 'BATCH-2026-' + String(batchCount + 1).padStart(3, '0')
-  const [supplier, setSupplier] = useState('Admin Fresh Market')
+  const [supplierList, setSupplierList] = useState([])
+  const [suppliersLoading, setSuppliersLoading] = useState(true)
+  const [suppliersError, setSuppliersError] = useState(null)
+  const [supplierOpen, setSupplierOpen] = useState(false)
+  const [supplierInput, setSupplierInput] = useState('')
+  const [selectedSupplier, setSelectedSupplier] = useState(null)
+  const supplierComboRef = useRef(null)
+
   const [productSearch, setProductSearch] = useState('')
+  const [catalogProducts, setCatalogProducts] = useState([])
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [productsError, setProductsError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
   const [selected, setSelected] = useState([]) // [{...catalog item, qty, expiry}]
 
-  const filteredCatalog = CATALOG.filter(
-    (p) => p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      p.id.toLowerCase().includes(productSearch.toLowerCase())
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setProductsLoading(true)
+      setProductsError(null)
+      try {
+        const rows = await fetchAllProducts()
+        if (cancelled) return
+        const list = (rows || []).map(mapProductForBatchPicker).filter(Boolean)
+        setCatalogProducts(list)
+      } catch (e) {
+        if (!cancelled) setProductsError(e?.message || 'Không tải được danh sách sản phẩm')
+      } finally {
+        if (!cancelled) setProductsLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setSuppliersLoading(true)
+      setSuppliersError(null)
+      try {
+        const rows = await fetchSuppliers()
+        if (cancelled) return
+        const list = (rows || []).map(normalizeSupplier).filter(Boolean)
+        setSupplierList(list)
+      } catch (e) {
+        if (!cancelled) setSuppliersError(e?.message || 'Không tải được danh sách nhà cung cấp')
+      } finally {
+        if (!cancelled) setSuppliersLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (supplierComboRef.current && !supplierComboRef.current.contains(e.target)) {
+        setSupplierOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const supplierQuery = supplierInput.trim().toLowerCase()
+  const filteredSuppliers = supplierList.filter((s) =>
+    !supplierQuery || s.name.toLowerCase().includes(supplierQuery)
+  )
+
+  const pickSupplier = (s) => {
+    setSelectedSupplier(s)
+    setSupplierInput(s.name)
+    setSupplierOpen(false)
+  }
+
+  const onSupplierInputChange = (e) => {
+    const v = e.target.value
+    setSupplierInput(v)
+    setSupplierOpen(true)
+    if (selectedSupplier && v.trim() !== selectedSupplier.name) setSelectedSupplier(null)
+  }
+
+  const q = productSearch.trim().toLowerCase()
+  const filteredCatalog = catalogProducts.filter(
+    (p) =>
+      !q ||
+      p.name.toLowerCase().includes(q) ||
+      String(p.id).toLowerCase().includes(q)
   )
 
   const addProduct = (p) => {
-    if (selected.find((s) => s.id === p.id)) return
+    const exist = selected.find((s) => s.id === p.id)
+    if (exist) {
+      // Bấm “Thêm” liên tục sẽ cộng thêm 1 đơn vị (không bị khóa nút).
+      setSelected((prev) => prev.map((s) => (s.id === p.id ? { ...s, qty: s.qty + 1 } : s)))
+      return
+    }
     setSelected((prev) => [...prev, { ...p, qty: 1, expiry: '' }])
   }
   const removeProduct = (id) => setSelected((prev) => prev.filter((s) => s.id !== id))
@@ -75,14 +361,52 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
   const totalQty = selected.reduce((sum, s) => sum + s.qty, 0)
   const totalValue = selected.reduce((sum, s) => sum + s.qty * s.price, 0)
 
-  const handleAdd = () => {
-    if (!supplier || selected.length === 0) return
-    onConfirm({
-      id: autoId, supplier,
-      totalQty, totalValue,
-      items: selected.map((s) => ({ product: s.name, qty: s.qty, remaining: s.qty, price: s.price, expiry: s.expiry || '—' })),
-    })
-    onClose()
+  const handleAdd = async () => {
+    if (!selectedSupplier || selected.length === 0 || submitting) return
+    setSubmitting(true)
+    try {
+      const apiBody = {
+        supplierId: Number(selectedSupplier.supplierId),
+        items: selected.map((s) => ({
+          productId: Number(s.id),
+          quantity: Math.max(1, Math.floor(Number(s.qty)) || 1),
+        })),
+      }
+      const res = await createBatch(apiBody)
+      // API có thể bọc: { data: { batchId, batchCode } } hoặc trả thẳng object tạo lô.
+      const created = res?.data?.data ?? res?.data ?? res
+      const batchId = created?.batchId ?? created?.BatchId ?? null
+      const batchCode = (created?.batchCode ?? created?.batch_code ?? created?.code ?? '').toString().trim()
+      const displayId =
+        batchCode ||
+        (batchId != null ? String(batchId) : autoId)
+
+      const payload = {
+        id: displayId,
+        batchId,
+        supplier: selectedSupplier.name,
+        phone: selectedSupplier.phone || undefined,
+        supplierId: selectedSupplier.supplierId,
+        totalQty,
+        totalValue,
+        items: selected.map((s) => ({
+          product: batchProductDisplayName(s.name) || s.name,
+          qty: s.qty,
+          remaining: s.qty,
+          price: s.price,
+          expiry: s.expiry || '—',
+        })),
+      }
+      // Chờ parent refresh danh sách (GET /batch) xong rồi mới đóng modal + toast.
+      if (onConfirm) await onConfirm(payload)
+      onClose()
+      toast.success(res?.message || 'Đã tạo lô hàng.')
+    } catch (err) {
+      const msg = getApiErrorMessage(err) || err?.message || 'Tạo lô hàng thất bại.'
+      toast.error(msg)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const inputS = { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13.5, outline: 'none', boxSizing: 'border-box', color: '#374151', background: '#fff' }
@@ -93,7 +417,7 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 28px 14px', borderBottom: '1px solid #f1f5f9' }}>
           <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', margin: 0 }}>Thêm Lô Hàng Mới</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 20 }}><FiX /></button>
+          <button type="button" onClick={onClose} disabled={submitting} style={{ background: 'none', border: 'none', cursor: submitting ? 'default' : 'pointer', color: '#94a3b8', fontSize: 20, opacity: submitting ? 0.5 : 1 }}><FiX /></button>
         </div>
 
         {/* Body: left + right panels */}
@@ -105,13 +429,78 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
               <p style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', margin: '0 0 12px' }}>Thông Tin Lô Hàng</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Mã Lô Hàng <span style={{ color: '#ef4444' }}>*</span></label>
-                  <input value={autoId} readOnly style={{ ...inputS, background: '#f8fafc', color: '#94a3b8' }} />
+                  <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Số điện thoại nhà cung cấp</label>
+                  <input
+                    value={selectedSupplier ? (selectedSupplier.phone || '') : ''}
+                    readOnly
+                    placeholder={selectedSupplier ? '—' : 'Chọn nhà cung cấp'}
+                    aria-readonly="true"
+                    style={{
+                      ...inputS,
+                      background: '#f8fafc',
+                      color: selectedSupplier?.phone ? '#64748b' : '#94a3b8',
+                      cursor: 'default',
+                    }}
+                  />
                 </div>
-                <div>
+                <div ref={supplierComboRef} style={{ position: 'relative' }}>
                   <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Nhà Cung Cấp <span style={{ color: '#ef4444' }}>*</span></label>
-                  <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="VD: Nguyễn Văn A" style={inputS}
-                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)} onBlur={(e) => (e.target.style.borderColor = '#e2e8f0')} />
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      value={supplierInput}
+                      onChange={onSupplierInputChange}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = PRIMARY
+                        setSupplierOpen(true)
+                      }}
+                      onBlur={(e) => (e.target.style.borderColor = '#e2e8f0')}
+                      placeholder={suppliersLoading ? 'Đang tải...' : 'Gõ để tìm nhà cung cấp...'}
+                      disabled={suppliersLoading}
+                      autoComplete="off"
+                      role="combobox"
+                      aria-expanded={supplierOpen}
+                      style={{ ...inputS, paddingRight: 36 }}
+                    />
+                    <FiChevronDown
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => !suppliersLoading && setSupplierOpen((o) => !o)}
+                      style={{
+                        position: 'absolute', right: 10, top: '50%', transform: `translateY(-50%) rotate(${supplierOpen ? 180 : 0}deg)`,
+                        color: '#94a3b8', fontSize: 18, cursor: suppliersLoading ? 'default' : 'pointer', transition: 'transform 0.15s',
+                      }}
+                    />
+                  </div>
+                  {suppliersError && (
+                    <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#ef4444' }}>{suppliersError}</p>
+                  )}
+                  {supplierOpen && !suppliersLoading && (
+                    <div
+                      style={{
+                        position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, maxHeight: 200, overflowY: 'auto',
+                        background: '#fff', border: `1.5px solid ${PRIMARY}40`, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 20,
+                      }}
+                    >
+                      {filteredSuppliers.length === 0 ? (
+                        <div style={{ padding: '12px 14px', fontSize: 13, color: '#94a3b8' }}>Không có nhà cung cấp phù hợp</div>
+                      ) : (
+                        filteredSuppliers.map((s) => (
+                          <button
+                            key={s.supplierId}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => pickSupplier(s)}
+                            style={{
+                              display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f1f5f9',
+                              background: selectedSupplier?.supplierId === s.supplierId ? '#f0fdf4' : '#fff', cursor: 'pointer', fontSize: 13.5, color: '#0f172a',
+                            }}
+                          >
+                            <span style={{ fontWeight: 600 }}>{s.name}</span>
+                            {s.phone ? <span style={{ display: 'block', fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{s.phone}</span> : null}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -123,28 +512,54 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
               <div style={{ position: 'relative' }}>
                 <FiSearch style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 15 }} />
                 <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Tìm kiếm sản phẩm..."
+                  placeholder={productsLoading ? 'Đang tải sản phẩm...' : 'Tìm kiếm sản phẩm...'}
+                  disabled={productsLoading}
                   style={{ ...inputS, paddingLeft: 34 }}
                   onFocus={(e) => (e.target.style.borderColor = PRIMARY)} onBlur={(e) => (e.target.style.borderColor = '#e2e8f0')} />
               </div>
+              {productsError && (
+                <p style={{ margin: 0, fontSize: 12, color: '#ef4444' }}>{productsError}</p>
+              )}
               {/* Product list */}
               <div style={{ border: '1.5px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', maxHeight: 280, overflowY: 'auto' }}>
-                {filteredCatalog.map((p, i) => {
-                  const isAdded = !!selected.find((s) => s.id === p.id)
+                {productsLoading ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Đang tải danh sách sản phẩm...</div>
+                ) : filteredCatalog.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Không có sản phẩm phù hợp.</div>
+                ) : (
+                  filteredCatalog.map((p, i) => {
                   return (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderBottom: i < filteredCatalog.length - 1 ? '1px solid #f1f5f9' : 'none', background: isAdded ? '#f0fdf4' : '#fff' }}>
-                      <div>
-                        <div style={{ fontWeight: 700, color: PRIMARY, fontSize: 14 }}>{p.name}</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>{fmt(p.price)} / {p.unit}</div>
+                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderBottom: i < filteredCatalog.length - 1 ? '1px solid #f1f5f9' : 'none', background: selected.find((s) => s.id === p.id) ? '#f0fdf4' : '#fff' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, color: PRIMARY, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {batchProductDisplayName(p.name)}
+                          </div>
                         <div style={{ fontSize: 11.5, color: PRIMARY, fontStyle: 'italic' }}>Nguồn: {p.origin}</div>
-                      </div>
-                      <button onClick={() => addProduct(p)} disabled={isAdded}
-                        style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: isAdded ? '#e2e8f0' : `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, color: isAdded ? '#94a3b8' : '#fff', fontWeight: 700, fontSize: 12.5, cursor: isAdded ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
-                        {isAdded ? '✓ Đã Thêm' : '+ Thêm'}
-                      </button>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a' }}>
+                            Còn lại: {p.remaining != null ? p.remaining : '—'}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addProduct(p)}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`,
+                            color: '#fff',
+                            fontWeight: 700,
+                            fontSize: 12.5,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          + Thêm
+                        </button>
                     </div>
                   )
-                })}
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -169,24 +584,21 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
                 {selected.map((s) => (
                   <div key={s.id} style={{ border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', background: '#fafafa' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', flex: 1, paddingRight: 6 }}>{s.name}</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', flex: 1, paddingRight: 6 }}>{batchProductDisplayName(s.name)}</div>
                       <button onClick={() => removeProduct(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 14, padding: 0, flexShrink: 0 }}>✕</button>
                     </div>
-                    <div style={{ fontSize: 11.5, color: '#64748b', marginBottom: 6 }}>{fmt(s.price)} / {s.unit}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <label style={{ fontSize: 11.5, fontWeight: 600, color: '#374151' }}>SL:</label>
                       <input type="number" min={1} value={s.qty} onChange={(e) => setQty(s.id, e.target.value)}
                         style={{ width: 52, padding: '4px 6px', border: '1.5px solid #e2e8f0', borderRadius: 6, fontSize: 13, outline: 'none', textAlign: 'center' }}
                         onFocus={(e) => (e.target.style.borderColor = PRIMARY)} onBlur={(e) => (e.target.style.borderColor = '#e2e8f0')} />
-                      <span style={{ fontSize: 12, color: PRIMARY, fontWeight: 700, marginLeft: 'auto' }}>{fmt(s.qty * s.price)}</span>
                     </div>
                   </div>
                 ))}
 
                 {/* Total */}
-                <div style={{ borderTop: '2px solid #e2e8f0', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ borderTop: '2px solid #e2e8f0', paddingTop: 10 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Tổng ({totalQty} sp)</span>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: PRIMARY }}>{fmt(totalValue)}</span>
                 </div>
               </div>
             )}
@@ -195,10 +607,21 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
 
         {/* Footer */}
         <div style={{ borderTop: '1px solid #f1f5f9', padding: '14px 28px', display: 'flex', gap: 12 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Hủy</button>
-          <button onClick={handleAdd} disabled={selected.length === 0 || !supplier}
-            style={{ flex: 2.5, padding: '12px', borderRadius: 10, border: 'none', background: selected.length === 0 || !supplier ? '#e2e8f0' : `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, color: selected.length === 0 || !supplier ? '#94a3b8' : '#fff', fontWeight: 700, fontSize: 14, cursor: selected.length === 0 || !supplier ? 'default' : 'pointer', boxShadow: selected.length > 0 ? '0 2px 8px rgba(117,176,111,0.35)' : 'none' }}>
-            Thêm Lô Hàng
+          <button type="button" onClick={onClose} disabled={submitting} style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.65 : 1 }}>Hủy</button>
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={selected.length === 0 || !selectedSupplier || suppliersLoading || productsLoading || submitting}
+            style={{
+              flex: 2.5, padding: '12px', borderRadius: 10, border: 'none',
+              background: selected.length === 0 || !selectedSupplier || suppliersLoading || productsLoading || submitting ? '#e2e8f0' : `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`,
+              color: selected.length === 0 || !selectedSupplier || suppliersLoading || productsLoading || submitting ? '#94a3b8' : '#fff',
+              fontWeight: 700, fontSize: 14,
+              cursor: selected.length === 0 || !selectedSupplier || suppliersLoading || productsLoading || submitting ? 'default' : 'pointer',
+              boxShadow: selected.length > 0 && selectedSupplier && !submitting ? '0 2px 8px rgba(117,176,111,0.35)' : 'none',
+            }}
+          >
+            {submitting ? 'Đang tạo...' : 'Thêm Lô Hàng'}
           </button>
         </div>
       </div>
@@ -206,178 +629,82 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
   )
 }
 
-
-// ── View Detail Modal ──
-function ViewBatchModal({ batch, onClose }) {
-  const totalQty = batch.items.reduce((s, i) => s + i.qty, 0)
-  const totalRemaining = batch.items.reduce((s, i) => s + (i.remaining ?? i.qty), 0)
-  const totalValue = batch.items.reduce((s, i) => s + i.qty * i.price, 0)
-
-  const infoFields = [
-    [['Mã Lô:', batch.id], ['Nhà Cung Cấp:', batch.supplier]],
-    [['Số Điện Thoại:', batch.phone || '—'], ['Tổng Số Lượng:', batch.totalQty]],
-    [['Tổng Giá Trị:', null, fmt(batch.totalValue)], ['Ngày Tạo:', batch.createdDate || '—']],
-    [['Ngày Giao Hàng:', batch.deliveryDate || '—'], ['Trạng Thái:', null, null, batch.status]],
-  ]
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: 620, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
-        {/* Modal header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 28px 16px' }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: 0 }}>Chi Tiết Lô Hàng</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 22, lineHeight: 1 }}><FiX /></button>
-        </div>
-
-        <div style={{ padding: '0 28px 28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Info card */}
-          <div style={{ background: '#f8fafc', borderRadius: 12, padding: '20px 24px' }}>
-            <p style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', margin: '0 0 16px' }}>Thông Tin Lô Hàng</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 32px' }}>
-              {infoFields.map((row, ri) =>
-                row.map(([label, plain, green, statusVal], ci) => (
-                  <div key={`${ri}-${ci}`}>
-                    <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 3 }}>{label}</div>
-                    {statusVal ? (
-                      <span style={{
-                        display: 'inline-block', padding: '2px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700,
-                        background: statusVal === 'Hoàn Thành' ? '#f0fdf4' : '#fff7ed',
-                        color: statusVal === 'Hoàn Thành' ? PRIMARY_DARK : '#f97316',
-                        border: `1px solid ${statusVal === 'Hoàn Thành' ? PRIMARY + '40' : '#fed7aa'}`,
-                      }}>{statusVal}</span>
-                    ) : (
-                      <div style={{ fontSize: 15, fontWeight: 700, color: green ? PRIMARY : '#0f172a' }}>
-                        {green || plain}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Product table */}
-          <div>
-            <p style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', margin: '0 0 12px' }}>Chi Tiết Sản Phẩm</p>
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc' }}>
-                    {['Sản Phẩm', 'Số Lượng', 'Còn Lại', 'Hạn Sử Dụng', 'Thành Tiền'].map((h) => (
-                      <th key={h} style={{ ...thStyle, background: 'transparent', fontSize: 13 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {batch.items.map((it, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '11px 12px', color: '#1e293b' }}>{it.product}</td>
-                      <td style={{ padding: '11px 12px', color: '#374151', textAlign: 'center' }}>{it.qty}</td>
-                      <td style={{ padding: '11px 12px', color: PRIMARY, fontWeight: 700, textAlign: 'center' }}>{it.remaining ?? it.qty}</td>
-                      <td style={{ padding: '11px 12px', color: '#374151' }}>{it.expiry || '—'}</td>
-                      <td style={{ padding: '11px 12px', color: PRIMARY, fontWeight: 700, textAlign: 'right' }}>{fmt(it.qty * it.price)}</td>
-                    </tr>
-                  ))}
-                  {/* Total row */}
-                  <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
-                    <td style={{ padding: '11px 12px', fontWeight: 700, color: '#0f172a' }}>Tổng Cộng:</td>
-                    <td style={{ padding: '11px 12px', fontWeight: 700, color: '#0f172a', textAlign: 'center' }}>{totalQty}</td>
-                    <td style={{ padding: '11px 12px', fontWeight: 700, color: PRIMARY, textAlign: 'center' }}>{totalRemaining}</td>
-                    <td />
-                    <td style={{ padding: '11px 12px', fontWeight: 800, color: PRIMARY, textAlign: 'right' }}>{fmt(totalValue)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Evidence placeholder */}
-          <div style={{ border: '2px dashed #fde68a', background: '#fefce8', borderRadius: 12, padding: '28px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🖼️</div>
-            <p style={{ fontWeight: 700, fontSize: 15, color: '#92400e', margin: '0 0 4px' }}>Chưa Có Ảnh Minh Chứng</p>
-            <p style={{ fontSize: 13, color: '#a16207', margin: 0 }}>Ảnh minh chứng sẽ được tải lên khi hoàn thành kiểm tra lô hàng</p>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ borderTop: '1px solid #f1f5f9', padding: '16px 28px' }}>
-          <button onClick={onClose} style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Đóng</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Expanded sub-table ──
-function ExpandedProducts({ items }) {
-  return (
-    <tr>
-      <td colSpan={7} style={{ padding: 0, background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-        <div style={{ padding: '0 16px 16px 48px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 0 8px', color: '#475569', fontWeight: 700, fontSize: 13 }}>
-            <FiHash style={{ fontSize: 14 }} /> Danh Sách Sản Phẩm Trong Lô
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <thead>
-              <tr>
-                {['Sản Phẩm', 'Số Lượng', 'Hạn Sử Dụng', 'Thành Tiền'].map((h) => (
-                  <th key={h} style={{ ...thStyle, background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '9px 14px' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, i) => (
-                <tr key={i} style={{ borderBottom: i < items.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                  <td style={{ padding: '10px 14px', color: '#1e293b', fontWeight: 500 }}>{it.product}</td>
-                  <td style={{ padding: '10px 14px', color: '#374151' }}>{it.qty}</td>
-                  <td style={{ padding: '10px 14px', color: '#f97316' }}>{it.expiry || '—'}</td>
-                  <td style={{ padding: '10px 14px', color: PRIMARY, fontWeight: 700 }}>{fmt(it.qty * it.price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </td>
-    </tr>
-  )
-}
-
 export default function BatchManagementView() {
-  const [batches, setBatches] = useState(INIT_BATCHES)
+  const [batches, setBatches] = useState([])
+  const [listLoading, setListLoading] = useState(true)
+  const [listError, setListError] = useState(null)
   const [search, setSearch] = useState('')
-  const [expandedIds, setExpandedIds] = useState(new Set())
+  const [statusFilter, setStatusFilter] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
-  const [viewBatch, setViewBatch] = useState(null)
+  const [viewBatchId, setViewBatchId] = useState(null)
+  const [completeModalBatchId, setCompleteModalBatchId] = useState(null)
 
-  const filtered = batches.filter(
-    (b) => b.id.toLowerCase().includes(search.toLowerCase()) ||
-      b.supplier.toLowerCase().includes(search.toLowerCase())
-  )
+  const refreshBatchRows = async () => {
+    const rows = await fetchBatches()
+    const mapped = (rows || []).map(mapApiBatchToUi)
+    setBatches(mapped)
+    return mapped
+  }
+
+  const loadBatches = async () => {
+    setListLoading(true)
+    setListError(null)
+    try {
+      await refreshBatchRows()
+    } catch (e) {
+      setListError(getApiErrorMessage(e) || e?.message || 'Không tải được danh sách lô hàng')
+      setBatches([])
+    } finally {
+      setListLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadBatches()
+  }, [])
+
+  const q = search.trim().toLowerCase()
+  const filtered = batches.filter((b) => {
+    const matchText =
+      !q ||
+      String(b.id).toLowerCase().includes(q) ||
+      (b.supplier || '').toLowerCase().includes(q) ||
+      (b.phone || '').toLowerCase().includes(q)
+    const matchStatus = !statusFilter || b.status === statusFilter
+    return matchText && matchStatus
+  })
 
   const total = batches.length
-  const delivering = batches.filter((b) => b.status === 'Đang Giao').length
-  const done = batches.filter((b) => b.status === 'Hoàn Thành').length
+  const delivering = batches.filter((b) => b.status === 'DELIVERING').length
+  const done = batches.filter((b) => b.status === 'COMPLETED').length
 
-  const toggleExpand = (id) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
-  const handleAdd = (batch) => {
-    setBatches((prev) => [{
-      ...batch,
-      createdDate: new Date().toLocaleDateString('vi-VN'),
-      status: 'Đang Giao',
-    }, ...prev])
-  }
-
-  const handleConfirm = (id) => {
-    setBatches((prev) => prev.map((b) =>
-      b.id === id ? { ...b, status: 'Hoàn Thành', deliveryDate: new Date().toLocaleDateString('vi-VN') } : b
-    ))
+  const handleAdd = async (payload) => {
+    const wantCode = payload?.id != null ? String(payload.id).trim() : null
+    const wantBatchId = payload?.batchId != null ? String(payload.batchId) : null
+    const matchesNewBatch = (b) => {
+      if (wantBatchId && b.batchId != null && String(b.batchId) === wantBatchId) return true
+      if (wantCode && String(b.id) === wantCode) return true
+      return false
+    }
+    setListLoading(true)
+    setListError(null)
+    try {
+      const delays = [0, 500, 1000, 1800, 2800]
+      for (let i = 0; i < delays.length; i += 1) {
+        try {
+          const mapped = await refreshBatchRows()
+          if (!wantCode && !wantBatchId) break
+          if (mapped.some(matchesNewBatch)) break
+        } catch (e) {
+          setListError(getApiErrorMessage(e) || e?.message || 'Không tải được danh sách lô hàng')
+          setBatches([])
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, delays[i]))
+      }
+    } finally {
+      setListLoading(false)
+    }
   }
 
   const statCards = [
@@ -415,16 +742,46 @@ export default function BatchManagementView() {
         ))}
       </div>
 
-      {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 20 }}>
+      {listError && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 14 }}>
+          {listError}
+        </div>
+      )}
+
+      {/* Search + status filter */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'stretch' }}>
+        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 200 }}>
         <FiSearch style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 16 }} />
         <input
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tìm kiếm theo mã lô, sản phẩm, nhân viên..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm theo mã lô, nhà cung cấp, SĐT..."
+            disabled={listLoading}
           style={{ width: '100%', padding: '11px 14px 11px 42px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: '#fff', color: '#374151' }}
           onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
           onBlur={(e) => (e.target.style.borderColor = '#e2e8f0')}
         />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          disabled={listLoading}
+          style={{
+            flex: '0 1 260px',
+            minWidth: 200,
+            padding: '11px 14px',
+            border: '1.5px solid #e2e8f0',
+            borderRadius: 10,
+            fontSize: 14,
+            background: '#fff',
+            color: '#374151',
+            cursor: listLoading ? 'default' : 'pointer',
+          }}
+        >
+          {BATCH_STATUS_FILTERS.map((opt) => (
+            <option key={opt.value || 'all'} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
       </div>
 
       {/* Table */}
@@ -432,74 +789,94 @@ export default function BatchManagementView() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
           <thead>
             <tr>
-              {['Mã Lô', 'Nhà Cung Cấp', 'Tổng SL', 'Tổng Giá Trị', 'Ngày Giao Hàng', 'Trạng Thái', 'Thao Tác'].map((h) => (
+              {['Mã Lô', 'Nhà Cung Cấp', 'Ngày Giao Hàng', 'Trạng Thái', 'Thao Tác'].map((h) => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Không tìm thấy lô hàng nào.</td></tr>
+            {listLoading ? (
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Đang tải danh sách lô hàng...</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Không tìm thấy lô hàng nào.</td></tr>
             ) : filtered.map((b, i) => {
-              const isExpanded = expandedIds.has(b.id)
+              const st = batchStatusBadgeStyle(b.status)
+              const statusLabel = labelBatchStatus(b.status)
               return (
-                <>
                   <tr
                     key={b.id}
-                    style={{ background: isExpanded ? '#f0fdf4' : (i % 2 === 0 ? '#fff' : '#fafafa'), cursor: 'pointer', transition: 'background 0.15s' }}
-                    onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = '#f0fdf4' }}
-                    onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#fafafa' }}
-                    onClick={() => toggleExpand(b.id)}
-                  >
-                    <td style={{ ...tdStyle, fontWeight: 700, color: '#1e293b' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ color: PRIMARY, fontSize: 13, transition: 'transform 0.2s', display: 'inline-block', transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
-                          {isExpanded ? <FiChevronDown /> : <FiChevronRight />}
-                        </span>
-                        {b.id}
-                      </div>
-                    </td>
+                  style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', transition: 'background 0.15s' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#fafafa' }}
+                >
+                    <td style={{ ...tdStyle, fontWeight: 700, color: '#1e293b' }}>{b.id}</td>
                     <td style={tdStyle}>{b.supplier}</td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{b.totalQty}</td>
-                    <td style={{ ...tdStyle, color: PRIMARY, fontWeight: 700 }}>{fmt(b.totalValue)}</td>
-                    <td style={{ ...tdStyle, color: b.deliveryDate ? '#374151' : '#94a3b8' }}>{b.deliveryDate || '—'}</td>
+                    <td style={{ ...tdStyle, color: b.deliveryDate && b.deliveryDate !== '—' ? '#374151' : '#94a3b8' }}>{b.deliveryDate || '—'}</td>
                     <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
                       <span style={{
                         display: 'inline-block', padding: '3px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 700,
-                        background: b.status === 'Hoàn Thành' ? '#f0fdf4' : '#fff7ed',
-                        color: b.status === 'Hoàn Thành' ? PRIMARY_DARK : '#f97316',
-                        border: `1px solid ${b.status === 'Hoàn Thành' ? PRIMARY + '40' : '#fed7aa'}`,
+                        background: st.bg, color: st.color, border: `1px solid ${st.border}`,
                       }}>
-                        {b.status}
+                        {statusLabel}
                       </span>
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'inline-flex', gap: 8 }}>
-                        <button title="Xem chi tiết" onClick={() => setViewBatch(b)} style={iconBtn(PRIMARY)}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <button type="button" title="Xem chi tiết" onClick={() => b.batchId != null && setViewBatchId(b.batchId)} style={iconBtn(PRIMARY)}>
                           <FiEye style={{ fontSize: 13 }} />
                         </button>
-                        {b.status === 'Đang Giao' && (
-                          <button title="Xác nhận hoàn thành" onClick={() => handleConfirm(b.id)} style={iconBtn(PRIMARY)}>
-                            <FiCheckSquare style={{ fontSize: 13 }} />
+                        {b.status === 'DELIVERING' && b.batchId != null && (
+                          <button
+                            type="button"
+                            title="Hoàn thành nhận hàng (COMPLETED)"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setCompleteModalBatchId(b.batchId)
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              padding: '6px 12px',
+                              borderRadius: 8,
+                              border: `1.5px solid ${PRIMARY}55`,
+                              background: '#f0fdf4',
+                              color: PRIMARY_DARK,
+                              fontWeight: 700,
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <FiCheck size={14} />
+                            Hoàn thành lô
                           </button>
                         )}
                       </div>
                     </td>
                   </tr>
-                  {isExpanded && b.items.length > 0 && <ExpandedProducts items={b.items} />}
-                </>
               )
             })}
           </tbody>
         </table>
         <div style={{ padding: '12px 16px', borderTop: '1px solid #f1f5f9', color: '#64748b', fontSize: 13 }}>
           Hiển thị <strong>{filtered.length}</strong> / <strong>{batches.length}</strong> lô hàng
-          <span style={{ marginLeft: 16, color: '#94a3b8', fontSize: 12 }}>• Click vào hàng để xem sản phẩm trong lô</span>
+          <span style={{ marginLeft: 16, color: '#94a3b8', fontSize: 12 }}>• Bấm biểu tượng mắt để xem chi tiết lô</span>
         </div>
       </div>
 
       {showAddModal && <AddBatchModal onClose={() => setShowAddModal(false)} onConfirm={handleAdd} batchCount={batches.length} />}
-      {viewBatch && <ViewBatchModal batch={viewBatch} onClose={() => setViewBatch(null)} />}
+      {viewBatchId != null && (
+        <BatchDetailModal batchId={viewBatchId} onClose={() => setViewBatchId(null)} onBatchUpdated={loadBatches} />
+      )}
+      {completeModalBatchId != null && (
+        <CompleteBatchModal
+          batchId={completeModalBatchId}
+          batchCode={batches.find((x) => x.batchId === completeModalBatchId)?.id}
+          onClose={() => setCompleteModalBatchId(null)}
+          onSuccess={loadBatches}
+        />
+      )}
     </div>
   )
 }
