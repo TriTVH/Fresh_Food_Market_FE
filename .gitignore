@@ -33,3 +33,5 @@ new
 new.*
 **/new
 **/new.*
+.vercel
+.env*.local

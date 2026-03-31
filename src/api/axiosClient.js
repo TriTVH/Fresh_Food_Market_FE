@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create Axios Instance
 const axiosClient = axios.create({
-    baseURL: 'http://localhost:5000', // Ocelot API Gateway URL
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000', // Configurable via .env or Vercel ENV
     headers: {
         'Content-Type': 'application/json',
     },
