@@ -33,14 +33,14 @@ axiosClient.interceptors.response.use(
     (error) => {
         // Any status codes that falls outside the range of 2xx cause this function to trigger
         console.error('API Error:', error.response?.data || error.message);
-        
+
         // Handle 401 Unauthorized
         if (error.response && error.response.status === 401) {
-             // For example, redirect to login via window.location if necessary
-             // or dispatch a logout event.
-             console.log("Token expired or unauthorized");
+            // For example, redirect to login via window.location if necessary
+            // or dispatch a logout event.
+            console.log("Token expired or unauthorized");
         }
-        
+
         return Promise.reject(error.response?.data || error); // Return standard BE error
     }
 );

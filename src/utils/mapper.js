@@ -6,7 +6,7 @@ export const mapProductDtoToFrontend = (productDto) => {
         const firstImage = productDto.imagesJson[0];
         imageUrl = firstImage.url || firstImage.Url || firstImage.imageUrl || firstImage.ImageUrl || imageUrl;
         if (!imageUrl.startsWith('http')) {
-            imageUrl = 'http://localhost:5000' + imageUrl; // fallback to gateway/BE url if it's relative
+            imageUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000') + imageUrl; // fallback to gateway/BE url if it's relative
         }
     }
 
@@ -51,60 +51,48 @@ export const mapNewsDtoToFrontend = (newsDto) => {
 };
 
 // ==================== VOUCHER MAPPER ====================
+/** API: validFrom = ngưỡng đơn tối thiểu theo nghìn đ (300 → 300.000đ); discountAmount = trần giảm (null = không trần theo %) */
 export const mapVoucherToFrontend = (voucherDto) => {
+    const validFrom = voucherDto.validFrom
+    const minOrder =
+        validFrom == null ? 0 : validFrom < 10000 ? validFrom * 1000 : validFrom
+
+    const rawCap = voucherDto.discountAmount
+    const maxDiscount = rawCap != null && rawCap > 0 ? rawCap : null
+
     return {
         id: voucherDto.voucherId,
         code: voucherDto.voucherCode,
         title: voucherDto.voucherName || 'Khuyến mãi đặc biệt',
         discount: voucherDto.discountPercentage || 0,
-        maxDiscount: voucherDto.discountAmount || 0,
-        minOrder: voucherDto.validFrom || 0,
+        maxDiscount,
+        minOrder,
         description: voucherDto.description || '',
-    };
-};
+    }
+}
 
 // ==================== ORDER MAPPER ====================
-// Status mapping from BE enum to FE key
-const ORDER_STATUS_MAP = {
-    'pending': 'pending',
-    'packaging': 'packing',
-    'out_of_stock': 'failed',
-    'shipping': 'shipping',
-    'delivered': 'success',
-    'cancelled': 'failed',
-    'failed': 'failed',
-};
-
 export const mapOrderDtoToFrontend = (orderDto) => {
-    const rawStatus = (orderDto.orderStatus || 'pending').toLowerCase();
-    const status = ORDER_STATUS_MAP[rawStatus] || 'pending';
-
-    const items = (orderDto.items || []).map(item => ({
-        id: item.productId,
-        name: item.productName || `Sản phẩm #${item.productId}`,
-        price: typeof item.price === 'number' ? item.price
-             : typeof item.subTotal === 'number' ? item.subTotal / (item.quantity || 1)
-             : 0,
-        quantity: item.quantity || 1,
-        subtotal: typeof item.subTotal === 'number' ? item.subTotal : 0,
-        image: item.imageUrl || 'https://placehold.co/200x200?text=SP'
-    }));
-
-    const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
     return {
         order_id: orderDto.orderId,
-        order_date: orderDto.createdAtUtc || orderDto.updatedAtUtc,
-        status,
-        total_amount: totalAmount,
-        items,
+        order_date: orderDto.createdAtUtc,
+        status: orderDto.orderStatus.toLowerCase(),
+        total_amount: orderDto.items.reduce((sum, item) => sum + item.subTotal, 0),
+        items: orderDto.items.map(item => ({
+            id: item.productId,
+            name: item.productName || 'Unknown Product',
+            price: item.price,
+            quantity: item.quantity,
+            // Fallback image
+            image: 'https://placehold.co/200x200?text=Item'
+        })),
         shipping_address: {
-            street: orderDto.shippingStreet || orderDto.street || '',
-            ward: orderDto.shippingWard || orderDto.ward || '',
-            city: orderDto.shippingCity || orderDto.city || ''
+            street: 'Default Street',
+            ward: 'Default Ward',
+            city: 'Default City'
         },
-        payment_method: orderDto.paymentMethod || '',
-        shipping_fee: orderDto.shippingFee || 0
+        payment_method: orderDto.paymentMethod,
+        shipping_fee: 30000
     };
 };
 

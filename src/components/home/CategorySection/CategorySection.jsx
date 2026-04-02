@@ -6,12 +6,22 @@ import ProductCard from '@components/product/ProductCard/ProductCard'
 
 function CategorySection({ title, tabs, products }) {
   const [activeTab, setActiveTab] = useState(0)
+
   const navigate = useNavigate();
 
-  // Filter products based on active tab
-  const filteredProducts = activeTab === 0 
-    ? products 
-    : products.filter(p => p.subcategory === tabs[activeTab]);
+  const tabAt = (i) => tabs[i]
+  const subcategoryForTab = (tab) => {
+    if (tab == null) return null
+    return typeof tab === 'string' ? tab : tab?.slug ?? null
+  }
+
+  const filteredProducts =
+    activeTab === 0
+      ? products
+      : products.filter((p) => {
+          const slug = subcategoryForTab(tabAt(activeTab))
+          return slug != null && slug !== '' && p.subcategory === slug
+        })
 
   // Route mapping based on category title
   const handleViewAll = () => {
@@ -23,6 +33,7 @@ function CategorySection({ title, tabs, products }) {
     else navigate('/products');
   };
   
+
   return (
     <section className="py-12">
       <div className="container mx-auto px-4">

@@ -17,6 +17,9 @@ import { placeOrder } from '@/api/orderApi'
 import { fetchVouchers } from '@/api/voucherApi'
 import { mapVoucherToFrontend } from '@/utils/mapper'
 import LoginAlertModal from '@/components/common/LoginAlertModal/LoginAlertModal'
+import Header from '@/components/layout/Header/Header'
+import Footer from '@/components/layout/Footer/Footer'
+import FloatingChatButton from '@/components/common/FloatingChatButton/FloatingChatButton'
 
 function CartPage() {
   const navigate = useNavigate()
@@ -26,27 +29,34 @@ function CartPage() {
   const [showVoucherModal, setShowVoucherModal] = useState(false)
   const [vouchers, setVouchers] = useState([])
   const [isLoadingVouchers, setIsLoadingVouchers] = useState(false)
+  const [voucherLoadError, setVoucherLoadError] = useState(null)
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
 
   useEffect(() => {
-    if (showVoucherModal && user) {
-        const loadVouchers = async () => {
-            setIsLoadingVouchers(true);
-            try {
-                const response = await fetchVouchers();
-                if (response && response.success && response.data) {
-                    setVouchers(response.data.map(mapVoucherToFrontend));
-                }
-            } catch (err) {
-                console.error("Failed to load vouchers", err);
-            } finally {
-                setIsLoadingVouchers(false);
-            }
-        };
-        loadVouchers();
+    if (!showVoucherModal) return
+
+    const loadVouchers = async () => {
+      setIsLoadingVouchers(true)
+      setVoucherLoadError(null)
+      try {
+        const response = await fetchVouchers()
+        if (response?.success && Array.isArray(response.data)) {
+          setVouchers(response.data.map(mapVoucherToFrontend))
+        } else {
+          setVouchers([])
+        }
+      } catch (err) {
+        console.error('Failed to load vouchers', err)
+        setVoucherLoadError('Không tải được danh sách mã giảm giá.')
+        setVouchers([])
+      } finally {
+        setIsLoadingVouchers(false)
+      }
     }
-  }, [showVoucherModal, user])
+
+    loadVouchers()
+  }, [showVoucherModal])
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN').format(price) + 'đ'
@@ -57,10 +67,10 @@ function CartPage() {
 
   let voucherDiscount = 0
   if (selectedVoucher && subtotal >= selectedVoucher.minOrder) {
-    voucherDiscount = Math.min(
-      Math.round((subtotal * selectedVoucher.discount) / 100),
-      selectedVoucher.maxDiscount
-    )
+    const rawDiscount = Math.round((subtotal * selectedVoucher.discount) / 100)
+    voucherDiscount = selectedVoucher.maxDiscount != null
+      ? Math.min(rawDiscount, selectedVoucher.maxDiscount)
+      : rawDiscount
   }
 
   const total = subtotal + shippingFee - voucherDiscount
@@ -77,19 +87,21 @@ function CartPage() {
       setIsLoginModalOpen(true)
       return
     }
-
+    
     try {
         const orderData = {
-           UserId: user.phone || user.username,
-           Items: cartItems.map(item => ({
-               ProductId: item.id,
-               ProductName: item.name,
-               Quantity: item.quantity,
-               Price: item.price,
-               SubTotal: item.price * item.quantity
+           userId: user.phone || user.username,
+           paymentMethod: "COD",
+           paymentStatus: "PENDING",
+           items: cartItems.map(item => ({
+               productId: item.id,
+               productName: item.name,
+               quantity: item.quantity,
+               price: item.price,
+               subTotal: item.price * item.quantity
            }))
         }
-
+        
         const response = await placeOrder(orderData);
         if (response) {
             setIsSuccessModalOpen(true);
@@ -110,8 +122,9 @@ function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
-      <div className="container mx-auto px-3 sm:px-4">
+    <div className="min-h-screen bg-gray-50">
+      <Header />
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {/* Header */}
         <div className="mb-5 sm:mb-8">
           <button
@@ -121,14 +134,7 @@ function CartPage() {
             <FiArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             <span className="font-semibold text-sm sm:text-base">Tiếp Tục Mua Sắm</span>
           </button>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">
-            Giỏ Hàng Của Bạn
-          </h1>
-          <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">
-            {cartItems.length > 0
-              ? `Bạn có ${cartItems.length} sản phẩm trong giỏ hàng`
-              : 'Giỏ hàng của bạn đang trống'}
-          </p>
+          
         </div>
 
         {cartItems.length === 0 ? (
@@ -254,6 +260,8 @@ function CartPage() {
         {/* Login Alert Modal */}
         <LoginAlertModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} onLogin={() => navigate('/login')} />
       </div>
+      <Footer />
+      <FloatingChatButton />
     </div>
   )
 }

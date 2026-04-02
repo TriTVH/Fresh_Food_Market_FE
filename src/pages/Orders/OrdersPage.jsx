@@ -85,6 +85,11 @@ function OrdersPage() {
       ? orders
       : orders.filter((order) => order.status === selectedStatus)
 
+  const getAddressText = (addr) => {
+    if (!addr) return '—'
+    return [addr.street, addr.ward, addr.city].filter(Boolean).join(', ') || '—'
+  }
+
   const formatDate = (dateString) => {
     const date = new Date(dateString)
     return date.toLocaleDateString('vi-VN', {
@@ -97,14 +102,7 @@ function OrdersPage() {
   }
 
   const formatCurrency = (amount) => {
-    const num = Number(amount)
-    if (isNaN(num) || num === 0) return '—'
-    return new Intl.NumberFormat('vi-VN').format(num) + 'đ';
-  }
-
-  const getAddressText = (addr) => {
-    const parts = [addr?.street, addr?.ward, addr?.city].filter(Boolean)
-    return parts.length > 0 ? parts.join(', ') : 'Chưa có thông tin địa chỉ'
+    return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
   }
 
   return (

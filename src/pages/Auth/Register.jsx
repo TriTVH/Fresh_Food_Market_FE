@@ -4,7 +4,8 @@ import { FiMail, FiLock, FiEye, FiEyeOff, FiUser, FiPhone } from 'react-icons/fi
 import { FcGoogle } from 'react-icons/fc'
 import { FaFacebook } from 'react-icons/fa'
 import { useAuth } from '@/context/AuthContext'
-import { register as registerApi } from '@/api/authApi'
+import { register as registerApi, login as loginApi } from '@/api/apiService'
+import { ROLE_ID, getRoleName } from '@/utils/constants'
 
 function Register() {
   const navigate = useNavigate()
@@ -42,17 +43,46 @@ function Register() {
     }
 
     setIsLoading(true)
+
     try {
-      await registerApi({
-        Phone: formData.phone,
-        Password: formData.password,
+      const registerResponse = await registerApi({
+        fullName: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
       })
-      // Đăng ký thành công → tự động đăng nhập
-      await login(formData.phone, formData.password)
+
+      if (!registerResponse?.success) {
+        throw new Error(registerResponse?.message || 'Đăng ký thất bại')
+      }
+
+      // Đăng nhập luôn sau khi đăng ký
+      const loginResponse = await loginApi({
+        phone: formData.phone,
+        password: formData.password,
+      })
+
+      if (!loginResponse?.success) {
+        throw new Error(loginResponse?.message || 'Đăng nhập sau đăng ký thất bại')
+      }
+
+      const account = loginResponse.data
+      const roleId = account?.role ?? ROLE_ID.CUSTOMER
+      const role = getRoleName(roleId)
+
+      login({
+        id: account?.accountId,
+        phone: account?.phone,
+        email: account?.email,
+        name: account?.username || formData.fullName,
+        roleId,
+        role,
+      })
+
       navigate('/')
     } catch (err) {
-      const msg = err?.message || err?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại!'
-      setError(msg)
+      console.error(err)
+      setError(err.message || 'Có lỗi xảy ra, vui lòng thử lại!')
     } finally {
       setIsLoading(false)
     }

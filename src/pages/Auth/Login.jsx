@@ -19,22 +19,26 @@ function Login() {
     setError('')
     setIsLoading(true)
 
-    const response = await login(phone, password)
-    if (response && response.success) {
-      const role = response.user.role;
-      // Redirect based on role
-      if (role === 'admin') {
-        navigate('/admin')
-      } else if (role === 'supplier') {
-        navigate('/supplier')
+    try {
+      const response = await login(phone, password)
+      if (response && response.success) {
+        const role = response.user.role
+        if (role === 'admin') {
+          navigate('/admin')
+        } else if (role === 'supplier') {
+          navigate('/supplier')
+        } else {
+          navigate('/')
+        }
       } else {
-        navigate('/')
+        setError(response?.error || 'Số điện thoại hoặc mật khẩu không chính xác!')
       }
-    } else {
-      setError(response?.error || 'Số điện thoại hoặc mật khẩu không chính xác!')
+    } catch (err) {
+      console.error(err)
+      setError('Số điện thoại hoặc mật khẩu không chính xác!')
+    } finally {
+      setIsLoading(false)
     }
-    
-    setIsLoading(false)
   }
 
   return (
@@ -136,7 +140,7 @@ function Login() {
               <div>
                 <label className="block text-gray-700 text-sm font-semibold mb-2">Số điện thoại</label>
                 <input
-                  type="text"
+                  type="tel"
                   placeholder="Nhập số điện thoại của bạn"
                   className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#75b06f] focus:border-[#75b06f] transition-all hover:border-gray-300 bg-white"
                   required

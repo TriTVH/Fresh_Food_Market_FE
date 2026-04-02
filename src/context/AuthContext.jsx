@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import * as authApi from '../api/authApi'
 
+
 const AuthContext = createContext(null)
 
 // Role mapping based on BE setup (Assuming 1: Admin, 2: Customer, 3: Supplier)
@@ -14,7 +15,6 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Load user from localStorage on mount
   useEffect(() => {
     const savedUser = localStorage.getItem('freshmarket_user')
     const token = localStorage.getItem('authToken')
@@ -67,8 +67,10 @@ export function AuthProvider({ children }) {
   const logout = () => {
     setCurrentUser(null)
     localStorage.removeItem('freshmarket_user')
+
     localStorage.removeItem('authToken')
     localStorage.removeItem('freshmarket_cart') // Clear cart on logout
+
   }
 
   const value = {
@@ -77,9 +79,12 @@ export function AuthProvider({ children }) {
     login,
     logout,
     isAuthenticated: !!currentUser,
+    roleId: currentUser?.roleId ?? null,
+    role: currentUser?.role ?? null,
     isAdmin: currentUser?.role === 'admin',
     isSupplier: currentUser?.role === 'supplier',
     isCustomer: currentUser?.role === 'customer',
+    isStaff: currentUser?.role === 'staff',
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

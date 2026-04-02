@@ -11,9 +11,7 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-// remove mockData
-import { fetchProducts } from '@/api/productApi'
-import { mapProductDtoToFrontend, matchCategory } from '@/utils/mapper'
+import { fetchActiveProductsByCategory } from '@/api/apiService'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -34,38 +32,33 @@ function ProductsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
-
-  const [allProducts, setAllProducts] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [searchParams] = useSearchParams()
+  const [allProductsRaw, setAllProductsRaw] = useState({
+    vegetables: [],
+    fruits: [],
+    meatSeafood: [],
+    driedFood: [],
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const productsPerPage = 12
 
   // Handle search query from URL
   useEffect(() => {
-    const query = searchParams.get('search')
-    if (query) {
-      setSearchQuery(query)
-      setCurrentPage(1)
-    }
-  }, [searchParams])
-
-  // Load products from API
-  useEffect(() => {
-    const loadProducts = async () => {
+    const load = async () => {
       try {
-        const response = await fetchProducts(true);
-        if (response && response.success && response.data) {
-          setAllProducts(response.data.map(mapProductDtoToFrontend));
-        }
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllProductsRaw(data)
       } catch (err) {
-        console.error("Failed to load products", err);
+        console.error(err)
+        setError('Không tải được danh sách sản phẩm.')
       } finally {
-        setIsLoading(false)
+        setLoading(false)
       }
-    };
-    loadProducts();
+    }
+    load()
   }, [])
-
-  const productsPerPage = 12
 
   const categories = [
     { id: 'all', name: 'Tất Cả Sản Phẩm', path: '/products' },
@@ -82,11 +75,21 @@ function ProductsPage() {
     { id: 'imported', name: 'Trái Nhập Khẩu' },
   ]
 
-  // Filter category
-  const categoryProducts = useMemo(() => {
-    if (selectedCategory === 'all') return allProducts;
-    return allProducts.filter(p => matchCategory(p.category, selectedCategory));
-  }, [allProducts, selectedCategory])
+  // Combine all products từ API
+  const allProducts = useMemo(() => {
+    let products = []
+    if (selectedCategory === 'all') {
+      products = [
+        ...(allProductsRaw.vegetables || []),
+        ...(allProductsRaw.fruits || []),
+        ...(allProductsRaw.meatSeafood || []),
+        ...(allProductsRaw.driedFood || []),
+      ]
+    } else {
+      products = allProductsRaw[selectedCategory] || []
+    }
+    return products
+  }, [selectedCategory, allProductsRaw])
 
   // Price ranges
   const priceRanges = [
@@ -101,8 +104,8 @@ function ProductsPage() {
   const filteredProducts = useMemo(() => {
     const query = removeVietnameseAccents(searchQuery.toLowerCase()).trim()
     
-    // Base products to filter (use allProducts when searching to avoid being stuck in a category)
-    const baseProducts = query ? allProducts : categoryProducts
+    // Base products to filter (use allProducts)
+    const baseProducts = allProducts
 
     return baseProducts.filter((product) => {
       // Search filter logic
@@ -151,7 +154,7 @@ function ProductsPage() {
 
       return true
     })
-  }, [allProducts, categoryProducts, searchQuery, selectedSubcategory, selectedCategory, selectedPriceRanges])
+  }, [allProducts, searchQuery, selectedSubcategory, selectedCategory, selectedPriceRanges])
 
   const togglePriceRange = (rangeId) => {
     setSelectedPriceRanges((prev) =>

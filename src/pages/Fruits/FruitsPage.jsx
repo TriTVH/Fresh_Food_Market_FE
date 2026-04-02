@@ -11,8 +11,7 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { fetchProducts } from '@/api/productApi'
-import { mapProductDtoToFrontend, matchCategory } from '@/utils/mapper'
+import { fetchActiveProductsByCategory } from '@/api/apiService'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -33,26 +32,25 @@ function FruitsPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
-
   const [allFruits, setAllFruits] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    const loadProducts = async () => {
+    const load = async () => {
       try {
-        const response = await fetchProducts(true);
-        if (response && response.success && response.data) {
-          const mapped = response.data.map(mapProductDtoToFrontend);
-          const filtered = mapped.filter(p => matchCategory(p.category, 'fruits'));
-          setAllFruits(filtered);
-        }
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllFruits(data.fruits || [])
       } catch (err) {
-        console.error("Failed to load products", err);
+        console.error(err)
+        setError('Không tải được sản phẩm trái cây.')
       } finally {
-        setIsLoading(false)
+        setLoading(false)
       }
-    };
-    loadProducts();
+    }
+    load()
   }, [])
 
   // Category options for dropdown

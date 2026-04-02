@@ -11,8 +11,7 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
-import { fetchProducts } from '@/api/productApi'
-import { mapProductDtoToFrontend, matchCategory } from '@/utils/mapper'
+import { fetchActiveProductsByCategory } from '@/api/apiService'
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -33,26 +32,25 @@ function VegetablesPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
-
   const [allVegetables, setAllVegetables] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    const loadProducts = async () => {
+    const load = async () => {
       try {
-        const response = await fetchProducts(true);
-        if (response && response.success && response.data) {
-          const mapped = response.data.map(mapProductDtoToFrontend);
-          const filtered = mapped.filter(p => matchCategory(p.category, 'vegetables'));
-          setAllVegetables(filtered);
-        }
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllVegetables(data.vegetables || [])
       } catch (err) {
-        console.error("Failed to load products", err);
+        console.error(err)
+        setError('Không tải được sản phẩm rau, củ, nấm.')
       } finally {
-        setIsLoading(false)
+        setLoading(false)
       }
-    };
-    loadProducts();
+    }
+    load()
   }, [])
 
   // Category options for dropdown
@@ -66,10 +64,10 @@ function VegetablesPage() {
 
   // Subcategories for Vegetables - values match against product.subcategory (subCategoryName from BE)
   const vegetableSubcategories = [
-    { id: 'all', name: 'Tất Cả', keywords: [] },
-    { id: 'leafy', name: 'Rau Ăn Lá', keywords: ['rau', 'lá', 'cải', 'xà lách', 'rau muống', 'rau dền'] },
-    { id: 'root', name: 'Củ, Quả', keywords: ['củ', 'quả', 'cà', 'bí', 'dưa', 'khoai', 'hành', 'tỏi', 'gừng', 'ớt'] },
-    { id: 'mushroom', name: 'Nấm, Đậu Hũ', keywords: ['nấm', 'đậu', 'hũ', 'đậu hũ', 'đậu phụ'] },
+    { id: 'all', name: 'Tất Cả', values: [] },
+    { id: 'leafy', name: 'Rau Ăn Lá', values: ['leafy'] },
+    { id: 'root', name: 'Củ, Quả', values: ['root', 'fruit-veg', 'cruciferous'] },
+    { id: 'mushroom', name: 'Nấm, Đậu Hũ', values: ['mushroom'] },
   ]
 
   // Price ranges
@@ -95,9 +93,9 @@ function VegetablesPage() {
       // Subcategory filter - match against real Vietnamese subcategory name from BE
       if (selectedSubcategory !== 'all') {
         const selectedTab = vegetableSubcategories.find((s) => s.id === selectedSubcategory)
-        if (selectedTab && selectedTab.keywords.length > 0) {
+        if (selectedTab && selectedTab.values.length > 0) {
           const subcat = removeVietnameseAccents((product.subcategory || product.category || '').toLowerCase())
-          const matches = selectedTab.keywords.some(kw =>
+          const matches = selectedTab.values.some(kw =>
             subcat.includes(removeVietnameseAccents(kw.toLowerCase()))
           )
           if (!matches) return false

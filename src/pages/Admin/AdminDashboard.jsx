@@ -8,11 +8,13 @@ import {
   FiGrid, FiPackage, FiBox, FiShoppingCart,
   FiHome, FiLogOut, FiEye, FiSearch,
   FiCheckSquare, FiTrendingUp, FiCalendar,
-  FiEdit2, FiTrash2, FiPercent, FiPlus, FiX,
+  FiEdit2, FiTrash2, FiPercent, FiPlus, FiX, FiLoader,
 } from 'react-icons/fi'
 import { FaLeaf, FaStar, FaStarHalfAlt, FaRegStar } from 'react-icons/fa'
 import BatchManagementView from './BatchManagementView'
 import OrderManagementView from './OrderManagementView'
+import { toast } from 'react-toastify'
+import { fetchAllProducts, uploadImageToCloudinary, createProduct, updateProduct, fetchProductDetail, getApiErrorMessage } from '@/api/apiService'
 
 const PRIMARY = '#75b06f'
 const PRIMARY_DARK = '#5a9450'
@@ -281,8 +283,25 @@ const TOP_PRODUCTS = [
   { rank: 9, name: 'Xoài Cát', rating: 4.8, reviews: 378, sold: '26.460.000đ' },
   { rank: 10, name: 'Ớt Chuông', rating: 4.7, reviews: 445, sold: '22.250.000đ' },
 ]
-// INIT_PRODUCTS is now just a fallback empty array; real data comes from API
-const INIT_PRODUCTS = []
+// Map 1 sản phẩm API -> row dùng cho bảng quản lý sản phẩm
+const mapApiProductToAdminRow = (p) => {
+  if (!p) return null
+  const productId = p.productId ?? p.ProductId
+  if (productId == null) return null
+  return {
+    // Tạm format mã SP từ productId: P001, P002,...
+    id: 'P' + String(productId).padStart(3, '0'),
+    productId,
+    name: p.productName ?? p.ProductName ?? '',
+    categoryCode: p.subCategoryName ?? p.SubCategoryName ?? '',
+    origin: p.manufacturingLocation ?? p.ManufacturingLocation ?? '',
+    price: p.priceSell ?? p.PriceSell ?? 0,
+    qty: p.quantity ?? p.Quantity ?? 0,
+    weight: p.weight ?? p.Weight ?? 0,
+    unit: (p.unit ?? p.Unit) || 'kg',
+    _raw: p,
+  }
+}
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: FiGrid, desc: 'Tổng quan hệ thống' },
   { label: 'Quản Lý Sản Phẩm', icon: FiPackage, desc: 'Danh mục sản phẩm' },
@@ -551,24 +570,70 @@ function OrderSection({ title, subtitle, icon, children }) {
   )
 }
 
+// Parse description "Key1: Value1 | Key2: Value2" thành mảng { key, value }
+function parseDescriptionToDescs(description) {
+  if (!description || typeof description !== 'string') return [{ key: 'Hướng dẫn sử dụng', value: '' }]
+  const trimmed = description.trim()
+  if (!trimmed) return [{ key: 'Hướng dẫn sử dụng', value: '' }]
+  const parts = trimmed.split(/\s*\|\s*/)
+  return parts.map((part) => {
+    const colonIdx = part.indexOf(':')
+    if (colonIdx >= 0) {
+      return { key: part.slice(0, colonIdx).trim(), value: part.slice(colonIdx + 1).trim() }
+    }
+    return { key: 'Mô tả', value: part.trim() }
+  }).filter((d) => d.key || d.value)
+}
+
 // ── Product Management ──
 function ProductModal({ product, onSave, onClose }) {
   const isNew = !product?.id
-  const [form, setForm] = useState(product
-    ? { ...product }
-    : { id: '', name: '', categoryCode: '', origin: '', price: '', qty: '', weight: '', unit: 'kg' }
-  )
-  const [descs, setDescs] = useState(
-    product?.descs || [{ key: 'Hướng dẫn sử dụng', value: '' }]
-  )
-  const [images, setImages] = useState(product?.images || [])
-  const [primaryIdx, setPrimaryIdx] = useState(0)
+  const raw = product?._raw
+  const initialForm = product
+    ? {
+        id: product.id,
+        productId: product.productId,
+        name: raw?.productName ?? raw?.ProductName ?? product.name,
+        subCategoryId: raw?.subCategoryId ?? raw?.SubCategoryId ?? 1,
+        origin: raw?.manufacturingLocation ?? raw?.ManufacturingLocation ?? product.origin,
+        price: raw?.priceSell ?? raw?.PriceSell ?? product.price,
+        qty: raw?.quantity ?? raw?.Quantity ?? product.qty,
+        weight: raw?.weight ?? raw?.Weight ?? product.weight,
+        unit: raw?.unit ?? raw?.Unit ?? product.unit ?? 'gram',
+        isOrganic: raw?.isOrganic ?? raw?.IsOrganic ?? false,
+        certification: raw?.certification ?? raw?.Certification ?? '',
+      }
+    : { id: '', name: '', subCategoryId: 1, origin: '', price: '', qty: '', weight: '', unit: 'gram', isOrganic: false, certification: '' }
+  const initialDescs = product
+    ? (product.descs ?? parseDescriptionToDescs(raw?.description ?? raw?.Description))
+    : [{ key: 'Hướng dẫn sử dụng', value: '' }]
+  const imagesJson = raw?.imagesJson ?? raw?.ImagesJson
+  const initialImages =
+    product?.images ?? (Array.isArray(imagesJson) ? imagesJson.map((img) => img?.url ?? img?.Url).filter(Boolean) : [])
+  const initialPrimaryIdx =
+    Array.isArray(imagesJson) ? imagesJson.findIndex((img) => img?.primary ?? img?.Primary) : 0
+
+  const [form, setForm] = useState(initialForm)
+  const [descs, setDescs] = useState(initialDescs.length ? initialDescs : [{ key: 'Hướng dẫn sử dụng', value: '' }])
+  const [images, setImages] = useState(initialImages)
+  const [imageFiles, setImageFiles] = useState([])
+  const [primaryIdx, setPrimaryIdx] = useState(initialPrimaryIdx >= 0 ? initialPrimaryIdx : 0)
   const fileInputRef = useRef()
+  const [zoomImageUrl, setZoomImageUrl] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
-  const handleSave = () => {
-    if (!form.name || !form.categoryCode || !form.price) return
-    onSave({ ...form, descs, images, primaryIdx })
+  const handleSave = async () => {
+    if (!form.name || !form.subCategoryId || !form.price || !form.unit) return
+    setSaving(true)
+    try {
+      await onSave({ ...form, descs, images, imageFiles, primaryIdx })
+      onClose()
+    } catch (_) {
+      // Giữ modal mở; parent đã alert lỗi
+    } finally {
+      setSaving(false)
+    }
   }
 
   const addDesc = () => setDescs((d) => [...d, { key: '', value: '' }])
@@ -577,18 +642,31 @@ function ProductModal({ product, onSave, onClose }) {
 
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files)
-    if (images.length >= 3) return
-    const remaining = 3 - images.length
-    files.slice(0, remaining).forEach((file) => {
-      const reader = new FileReader()
-      reader.onload = (ev) => setImages((prev) => [...prev, ev.target.result])
-      reader.readAsDataURL(file)
+    if (images.length >= 6) return
+    const remaining = 6 - images.length
+    const selected = files.slice(0, remaining)
+    selected.forEach((file) => {
+      const previewUrl = URL.createObjectURL(file)
+      setImages((prev) => [...prev, previewUrl])
+      setImageFiles((prev) => [...prev, file])
     })
   }
 
   const removeImage = (i) => {
+    const src = images[i]
+    const wasBlob = typeof src === 'string' && src.startsWith('blob:')
+    if (wasBlob) {
+      try {
+        URL.revokeObjectURL(src)
+      } catch {
+        // ignore
+      }
+      const blobIndexBefore = images.slice(0, i).filter((u) => typeof u === 'string' && u.startsWith('blob:')).length
+      setImageFiles((prev) => prev.filter((_, idx) => idx !== blobIndexBefore))
+    }
     setImages((prev) => prev.filter((_, idx) => idx !== i))
-    if (primaryIdx >= i && primaryIdx > 0) setPrimaryIdx((p) => p - 1)
+    if (primaryIdx === i) setPrimaryIdx(0)
+    else if (primaryIdx > i) setPrimaryIdx((p) => p - 1)
   }
 
   const inputStyle = { width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: '#374151', background: '#fff' }
@@ -598,7 +676,8 @@ function ProductModal({ product, onSave, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: 540, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.22)' }}>
+      <style>{`@keyframes adminProductSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div style={{ background: '#fff', borderRadius: 16, width: 760, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.22)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 28px 16px' }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: 0 }}>
@@ -607,45 +686,78 @@ function ProductModal({ product, onSave, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 20, lineHeight: 1 }}><FiX /></button>
         </div>
 
-        <div style={{ padding: '0 28px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div
+          style={{
+            padding: '0 28px 24px',
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1.8fr)',
+            columnGap: 24,
+            rowGap: 14,
+            alignItems: 'flex-start',
+          }}
+        >
           {/* Mã Sản Phẩm */}
           {!isNew && (
-            <div>
+            <div style={{ gridColumn: '2 / 3' }}>
               <label style={labelStyle}>Mã Sản Phẩm <span style={{ color: '#ef4444' }}>*</span></label>
               <input value={form.id} readOnly style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} />
             </div>
           )}
 
-          {/* Mã Phân Loại */}
-          <div>
-            <label style={labelStyle}>Mã Phân Loại <span style={{ color: '#ef4444' }}>*</span></label>
-            <input value={form.categoryCode} onChange={(e) => set('categoryCode', e.target.value)}
-              placeholder="VD: SC001" style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+          {/* Nhóm sản phẩm (Subcategory) */}
+          <div style={{ gridColumn: '2 / 3' }}>
+            <label style={labelStyle}>Nhóm Sản Phẩm (Subcategory) <span style={{ color: '#ef4444' }}>*</span></label>
+            <select
+              value={form.subCategoryId}
+              onChange={(e) => set('subCategoryId', Number(e.target.value))}
+              style={{ ...inputStyle, cursor: 'pointer' }}
+              onFocus={focusGreen}
+              onBlur={blurGray}
+            >
+              <option value={1}>1 - Rau ăn lá</option>
+              <option value={2}>2 - Củ, Quả</option>
+              <option value={3}>3 - Nấm, Đậu Hũ</option>
+              <option value={4}>4 - Trái Việt Nam</option>
+              <option value={5}>5 - Trái Nhập Khẩu</option>
+              <option value={6}>6 - Hải Sản</option>
+              <option value={7}>7 - Thịt Heo</option>
+              <option value={8}>8 - Thịt Bò</option>
+              <option value={9}>9 - Thịt Gà, Vịt & Chim</option>
+              <option value={10}>10 - Trái Cây Sấy</option>
+              <option value={11}>11 - Khô Chế Biến Sẵn</option>
+            </select>
           </div>
 
-          {/* Tên Sản Phẩm */}
-          <div>
+          {/* Tên Sản Phẩm — không cho sửa khi đang edit */}
+          <div style={{ gridColumn: '2 / 3' }}>
             <label style={labelStyle}>Tên Sản Phẩm <span style={{ color: '#ef4444' }}>*</span></label>
-            <input value={form.name} onChange={(e) => set('name', e.target.value)}
-              placeholder="VD: Cá Hồi Nauy Phi Lê" style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+            <input
+              value={form.name}
+              onChange={(e) => !isNew ? undefined : set('name', e.target.value)}
+              readOnly={!isNew}
+              placeholder="VD: Cá Hồi Nauy Phi Lê"
+              style={isNew ? inputStyle : { ...inputStyle, background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+              onFocus={isNew ? focusGreen : undefined}
+              onBlur={isNew ? blurGray : undefined}
+            />
           </div>
 
           {/* Nơi Sản Xuất */}
-          <div>
+          <div style={{ gridColumn: '2 / 3' }}>
             <label style={labelStyle}>Nơi Sản Xuất <span style={{ color: '#ef4444' }}>*</span></label>
             <input value={form.origin} onChange={(e) => set('origin', e.target.value)}
               placeholder="VD: Na Uy" style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
           </div>
 
           {/* Giá Bán */}
-          <div>
+          <div style={{ gridColumn: '2 / 3' }}>
             <label style={labelStyle}>Giá Bán (VNĐ) <span style={{ color: '#ef4444' }}>*</span></label>
             <input type="number" value={form.price} onChange={(e) => set('price', e.target.value)}
               placeholder="450000" style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
           </div>
 
           {/* Số Lượng / Khối Lượng / Đơn Vị — 3 columns */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ gridColumn: '2 / 3', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <div>
               <label style={labelStyle}>Số Lượng <span style={{ color: '#ef4444' }}>*</span></label>
               <input type="number" value={form.qty} onChange={(e) => set('qty', e.target.value)}
@@ -653,21 +765,54 @@ function ProductModal({ product, onSave, onClose }) {
             </div>
             <div>
               <label style={labelStyle}>Khối Lượng <span style={{ color: '#ef4444' }}>*</span></label>
-              <input type="number" value={form.weight} onChange={(e) => set('weight', e.target.value)}
-                placeholder="0.5" style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+              <input
+                type="number"
+                value={form.weight}
+                onChange={(e) => (isNew ? set('weight', e.target.value) : undefined)}
+                readOnly={!isNew}
+                placeholder="0.5"
+                style={isNew ? inputStyle : { ...inputStyle, background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+                onFocus={isNew ? focusGreen : undefined}
+                onBlur={isNew ? blurGray : undefined}
+              />
             </div>
             <div>
               <label style={labelStyle}>Đơn Vị <span style={{ color: '#ef4444' }}>*</span></label>
-              <select value={form.unit} onChange={(e) => set('unit', e.target.value)}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-                onFocus={focusGreen} onBlur={blurGray}>
-                {['kg', 'g', 'hộp', 'túi', 'chai', 'cái'].map((u) => <option key={u} value={u}>{u}</option>)}
+              <select
+                value={form.unit}
+                onChange={(e) => (isNew ? set('unit', e.target.value) : undefined)}
+                disabled={!isNew}
+                style={{
+                  ...inputStyle,
+                  cursor: isNew ? 'pointer' : 'not-allowed',
+                  background: !isNew ? '#f8fafc' : inputStyle.background,
+                  color: !isNew ? '#64748b' : inputStyle.color,
+                }}
+                onFocus={isNew ? focusGreen : undefined}
+                onBlur={isNew ? blurGray : undefined}
+              >
+                {['gram', 'kilogram', 'ton'].map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
               </select>
             </div>
           </div>
 
+          {/* Hữu cơ / Chứng nhận */}
+          <div style={{ gridColumn: '2 / 3', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#374151' }}>
+              <input type="checkbox" checked={!!form.isOrganic} onChange={(e) => set('isOrganic', e.target.checked)} style={{ width: 18, height: 18, accentColor: PRIMARY }} />
+              Sản phẩm hữu cơ (Organic)
+            </label>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={labelStyle}>Chứng nhận (Certification)</label>
+              <input value={form.certification ?? ''} onChange={(e) => set('certification', e.target.value)}
+                placeholder="VD: VietGAP, GlobalGAP" style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+            </div>
+          </div>
+
           {/* Mô Tả Sản Phẩm */}
-          <div>
+          <div style={{ gridColumn: '2 / 3' }}>
             <label style={labelStyle}>Mô Tả Sản Phẩm</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {descs.map((d, i) => (
@@ -690,27 +835,79 @@ function ProductModal({ product, onSave, onClose }) {
           </div>
 
           {/* Hình Ảnh Sản Phẩm */}
-          <div>
+          <div
+            style={{
+              gridColumn: '1 / 2',
+              gridRow: '1 / span 10',
+              paddingRight: 16,
+              borderRight: '1px solid #e5e7eb',
+              marginRight: 12,
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <label style={labelStyle}>Hình Ảnh Sản Phẩm</label>
-              <span style={{ fontSize: 12, color: images.length >= 3 ? '#ef4444' : '#64748b' }}>
-                ({images.length}/3 hình ảnh)
+              <span style={{ fontSize: 12, color: images.length >= 6 ? '#ef4444' : '#64748b' }}>
+                ({images.length}/6 hình ảnh)
               </span>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
               {images.map((src, i) => (
-                <div key={i} style={{ position: 'relative', width: 90, height: 90 }}>
-                  <img src={src} alt={`Product ${i + 1}`}
-                    style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: i === primaryIdx ? `2.5px solid ${PRIMARY}` : '2px solid #e2e8f0', cursor: 'pointer' }}
-                    onClick={() => setPrimaryIdx(i)} />
-                  {i === primaryIdx && (
-                    <span style={{ position: 'absolute', top: 4, left: 4, background: PRIMARY, borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>⭐</span>
-                  )}
-                  <button onClick={() => removeImage(i)}
-                    style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                <div key={i} style={{ position: 'relative', width: 90 }}>
+                  <div style={{ width: 90, height: 90, borderRadius: 8, overflow: 'hidden', border: i === primaryIdx ? `2.5px solid ${PRIMARY}` : '2px solid #e2e8f0', cursor: 'pointer' }}>
+                    <img
+                      src={src}
+                      alt={`Product ${i + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onClick={() => setZoomImageUrl(src)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setPrimaryIdx(i) }}
+                    title={i === primaryIdx ? 'Ảnh chính' : 'Đặt làm ảnh chính'}
+                    style={{
+                      position: 'absolute',
+                      top: 4,
+                      left: 4,
+                      width: 22,
+                      height: 22,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: i === primaryIdx ? '#fef08a' : 'rgba(255,255,255,0.9)',
+                      color: i === primaryIdx ? '#ca8a04' : '#94a3b8',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                    }}
+                  >
+                    {i === primaryIdx ? <FaStar size={12} /> : <FaRegStar size={12} />}
+                  </button>
+                  <button
+                    onClick={() => removeImage(i)}
+                    style={{
+                      position: 'absolute',
+                      top: 2,
+                      right: 2,
+                      background: 'rgba(0,0,0,0.55)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: 20,
+                      height: 20,
+                      cursor: 'pointer',
+                      color: '#fff',
+                      fontSize: 11,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
-              {images.length < 3 && (
+              {images.length < 6 && (
                 <div onClick={() => fileInputRef.current?.click()}
                   style={{ width: 90, height: 90, borderRadius: 8, border: '2px dashed #cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8', fontSize: 12, gap: 4 }}>
                   <FiPlus style={{ fontSize: 22 }} />
@@ -719,19 +916,48 @@ function ProductModal({ product, onSave, onClose }) {
               )}
               <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} />
             </div>
-            {images.length >= 3 && (
-              <p style={{ fontSize: 12, color: '#ef4444', margin: 0 }}>Đã đạt giới hạn 3 hình ảnh</p>
+            {images.length >= 6 && (
+              <p style={{ fontSize: 12, color: '#ef4444', margin: 0 }}>Đã đạt giới hạn 6 hình ảnh</p>
             )}
           </div>
 
           {/* Footer */}
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', paddingTop: 4 }}>
-            <button onClick={onClose} style={{ padding: '10px 24px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Hủy</button>
-            <button onClick={handleSave} style={{ padding: '10px 28px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 2px 8px rgba(117,176,111,0.35)' }}>
-              {isNew ? 'Thêm Sản Phẩm' : 'Cập Nhật'}
+            <button disabled={saving} onClick={onClose} style={{ padding: '10px 24px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>Hủy</button>
+            <button disabled={saving} onClick={handleSave} style={{ padding: '10px 28px', borderRadius: 8, border: 'none', background: saving ? '#94a3b8' : `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})`, color: '#fff', fontWeight: 700, fontSize: 14, cursor: saving ? 'wait' : 'pointer', boxShadow: saving ? 'none' : '0 2px 8px rgba(117,176,111,0.35)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              {saving && <FiLoader size={18} style={{ animation: 'adminProductSpin 0.9s linear infinite', flexShrink: 0 }} />}
+              {saving ? (isNew ? 'Đang thêm...' : 'Đang cập nhật...') : (isNew ? 'Thêm Sản Phẩm' : 'Cập Nhật')}
             </button>
           </div>
         </div>
+        {/* Zoom ảnh lớn khi click trong create modal */}
+        {zoomImageUrl && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15,23,42,0.75)',
+              zIndex: 1100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onClick={() => setZoomImageUrl(null)}
+          >
+            <img
+              src={zoomImageUrl}
+              alt="Product zoom"
+              style={{
+                maxWidth: '90vw',
+                maxHeight: '90vh',
+                borderRadius: 16,
+                boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+                objectFit: 'contain',
+                background: '#fff',
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -893,51 +1119,183 @@ function DiscountProgramModal({ product, onClose }) {
   )
 }
 
-function ProductManagementView() {
-  const [products, setProducts] = useState(INIT_PRODUCTS)
-  const [isLoading, setIsLoading] = useState(true)
+export function ProductManagementView() {
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    fetchProducts(false)
-      .then(res => {
-        const list = res?.data || res?.Data || []
-        const mapped = list.map(p => ({
-          id: p.productId || p.ProductId || '',
-          name: p.productName || p.ProductName || '',
-          categoryCode: p.subCategoryId || p.SubCategoryId || p.categoryName || '',
-          origin: p.origin || p.Origin || '',
-          price: p.priceSell || p.PriceSell || 0,
-          qty: p.quantity || p.Quantity || 0,
-          weight: p.weight || p.Weight || 0,
-          unit: p.unit || p.Unit || 'kg',
-        }))
-        if (mapped.length > 0) setProducts(mapped)
-      })
-      .catch(err => console.error('Failed to load products for admin:', err))
-      .finally(() => setIsLoading(false))
-  }, [])
+
 
   const [modal, setModal] = useState(null)
+  const [loadingEditProductId, setLoadingEditProductId] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [discountProduct, setDiscountProduct] = useState(null)
+  const [viewProduct, setViewProduct] = useState(null)
+  const [viewProductLoading, setViewProductLoading] = useState(false)
+  const [viewProductError, setViewProductError] = useState(null)
+  const [zoomImageUrl, setZoomImageUrl] = useState(null)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        console.log('[Admin] ProductManagementView mount → loading products...')
+        setLoading(true)
+        setError(null)
+        const apiProducts = await fetchAllProducts()
+        console.log('[Admin] fetchAllProducts result:', Array.isArray(apiProducts) ? apiProducts.length : apiProducts)
+        setProducts(apiProducts.map(mapApiProductToAdminRow))
+      } catch (err) {
+        console.error('Failed to load products', err)
+        setError(getApiErrorMessage(err) || 'Không tải được danh sách sản phẩm.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
 
   const filtered = products.filter(
     (p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase())
   )
 
-  const handleSave = (form) => {
+  const handleSave = async (form) => {
     if (modal.mode === 'add') {
-      const newId = 'P' + String(products.length + 1).padStart(3, '0')
-      setProducts((prev) => [...prev, { ...form, id: newId, price: Number(form.price), qty: Number(form.qty), weight: Number(form.weight) }])
+      try {
+        // Upload ảnh lên Cloudinary
+        const uploadedUrls = []
+        for (let i = 0; i < (form.imageFiles || []).length; i += 1) {
+          const url = await uploadImageToCloudinary(form.imageFiles[i])
+          uploadedUrls.push(url)
+        }
+        const imagesJson = uploadedUrls.map((url, index) => ({
+          url,
+          primary: index === form.primaryIdx,
+        }))
+
+        // Gọi API tạo sản phẩm (backend dùng productQty, không phải quantity)
+        const qty = Number(form.qty)
+        await createProduct({
+          subCategoryId: form.subCategoryId,
+          productName: form.name,
+          description: (form.descs && form.descs.length)
+            ? form.descs.map((d) => `${d.key}: ${d.value}`).join(' | ')
+            : '',
+          productQty: qty,
+          manufacturingLocation: form.origin,
+          priceSell: Number(form.price),
+          weight: Number(form.weight),
+          unit: form.unit,
+          isOrganic: !!form.isOrganic,
+          certification: form.certification?.trim() || null,
+          imagesJson,
+        })
+
+        // Reload list from API
+        const apiProducts = await fetchAllProducts()
+        setProducts(apiProducts.map(mapApiProductToAdminRow))
+      } catch (err) {
+        console.error('Failed to create product', err)
+        const apiMsg = getApiErrorMessage(err)
+        const is401 = err?.response?.status === 401
+        const fallback401 = 'Phiên đăng nhập hết hạn hoặc chưa đăng nhập. Vui lòng đăng xuất và đăng nhập lại (tài khoản Admin) rồi thử tạo sản phẩm.'
+        const fallbackGeneric = 'Tạo sản phẩm thất bại. Vui lòng thử lại.'
+        toast.error(apiMsg || (is401 ? fallback401 : fallbackGeneric))
+        throw err
+      }
     } else {
-      setProducts((prev) => prev.map((p) => p.id === form.id ? { ...form, price: Number(form.price), qty: Number(form.qty), weight: Number(form.weight) } : p))
+      // Cập nhật sản phẩm (PUT /product): ảnh mới (blob preview) upload Cloudinary, giữ nguyên URL https đã có.
+      try {
+        const qty = Number(form.qty)
+        const files = form.imageFiles || []
+        let fileQueue = 0
+        const imageUrls = []
+        for (const src of form.images || []) {
+          if (typeof src !== 'string' || !src.trim()) continue
+          if (src.startsWith('blob:')) {
+            const file = files[fileQueue]
+            if (!file) {
+              toast.error('Thiếu file ảnh. Vui lòng chọn lại ảnh.')
+              throw new Error('Missing image file for blob preview')
+            }
+             
+            const uploaded = await uploadImageToCloudinary(file)
+            imageUrls.push(uploaded)
+            fileQueue += 1
+          } else {
+            imageUrls.push(src)
+          }
+        }
+        const imagesJson = imageUrls.map((url, index) => ({
+          url,
+          primary: index === form.primaryIdx,
+        }))
+        await updateProduct({
+          productId: form.productId,
+          subCategoryId: form.subCategoryId,
+          productName: form.name,
+          description: (form.descs && form.descs.length)
+            ? form.descs.map((d) => `${d.key}: ${d.value}`).join(' | ')
+            : '',
+          productQty: qty,
+          manufacturingLocation: form.origin,
+          priceSell: Number(form.price),
+          weight: Number(form.weight),
+          unit: form.unit,
+          isOrganic: !!form.isOrganic,
+          certification: form.certification?.trim() || null,
+          imagesJson,
+        })
+
+        // Reload list from API sau khi cập nhật thành công
+        const apiProducts = await fetchAllProducts()
+        setProducts(apiProducts.map(mapApiProductToAdminRow))
+        setModal(null)
+      } catch (err) {
+        console.error('Failed to update product', err)
+        const apiMsg = getApiErrorMessage(err)
+        toast.error(apiMsg || 'Cập nhật sản phẩm thất bại. Vui lòng thử lại.')
+        throw err
+      }
     }
-    setModal(null)
+  }
+
+  const handleOpenEditProduct = async (p) => {
+    if (p?.productId == null) return
+    try {
+      setLoadingEditProductId(p.productId)
+      const detail = await fetchProductDetail(p.productId)
+      const row = mapApiProductToAdminRow(detail)
+      if (!row) {
+        toast.error('Dữ liệu sản phẩm không hợp lệ.')
+        return
+      }
+      setModal({ mode: 'edit', product: row })
+    } catch (err) {
+      console.error('Failed to load product for edit', err)
+      toast.error(getApiErrorMessage(err) || 'Không tải được chi tiết sản phẩm. Vui lòng thử lại.')
+    } finally {
+      setLoadingEditProductId(null)
+    }
+  }
+
+  const handleViewDetail = async (p) => {
+    try {
+      setViewProductLoading(true)
+      setViewProductError(null)
+      const detail = await fetchProductDetail(p.productId)
+      setViewProduct(detail)
+    } catch (err) {
+      console.error('Failed to load product detail', err)
+      setViewProductError(getApiErrorMessage(err) || 'Không tải được thông tin sản phẩm.')
+    } finally {
+      setViewProductLoading(false)
+    }
   }
 
   return (
     <div>
+      <style>{`@keyframes adminProductSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0f172a', margin: 0 }}>Quản Lý Danh Mục Sản Phẩm</h1>
@@ -955,14 +1313,29 @@ function ProductManagementView() {
           onFocus={(e) => (e.target.style.borderColor = PRIMARY)} onBlur={(e) => (e.target.style.borderColor = '#e2e8f0')} />
       </div>
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+        {error && !loading && (
+          <div style={{ padding: 24, textAlign: 'center', color: '#ef4444', fontSize: 14 }}>
+            {error}
+          </div>
+        )}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
           <thead>
             <tr>{['Mã SP', 'Tên Sản Phẩm', 'Mã Phân Loại', 'Nơi Sản Xuất', 'Giá Bán', 'Số Lượng', 'Khối Lượng', 'Đơn Vị', 'Thao Tác'].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr>
           </thead>
           <tbody>
-            {filtered.length === 0
-              ? <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Không tìm thấy sản phẩm nào.</td></tr>
-              : filtered.map((p, i) => (
+            {loading ? (
+              <tr>
+                <td colSpan={9} style={{ textAlign: 'center', padding: 48, verticalAlign: 'middle' }}>
+                  <style>{`@keyframes adminProductSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                  <div style={{ display: 'inline-flex', animation: 'adminProductSpin 0.9s linear infinite', color: PRIMARY }}>
+                    <FiLoader size={36} strokeWidth={2.5} />
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Không tìm thấy sản phẩm nào.</td></tr>
+            ) : (
+              filtered.map((p, i) => (
                 <tr key={p.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = '#f0fdf4')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#fafafa')}>
@@ -976,21 +1349,239 @@ function ProductManagementView() {
                   <td style={tdStyle}>{p.unit}</td>
                   <td style={{ ...tdStyle, textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', gap: 8 }}>
+                      <button
+                        title="Xem chi tiết"
+                        onClick={() => handleViewDetail(p)}
+                        style={iconBtn('#0ea5e9')}
+                      >
+                        <FiEye style={{ fontSize: 13 }} />
+                      </button>
                       <button title="Khuyến mãi" onClick={() => setDiscountProduct(p)} style={iconBtn('#f97316')}><FiPercent style={{ fontSize: 13 }} /></button>
-                      <button title="Chỉnh sửa" onClick={() => setModal({ mode: 'edit', product: p })} style={iconBtn(PRIMARY)}><FiEdit2 style={{ fontSize: 13 }} /></button>
+                      <button
+                        title="Chỉnh sửa"
+                        type="button"
+                        disabled={loadingEditProductId === p.productId}
+                        onClick={() => handleOpenEditProduct(p)}
+                        style={{ ...iconBtn(PRIMARY), opacity: loadingEditProductId === p.productId ? 0.65 : 1, cursor: loadingEditProductId === p.productId ? 'wait' : 'pointer' }}
+                      >
+                        {loadingEditProductId === p.productId ? (
+                          <FiLoader style={{ fontSize: 13, animation: 'adminProductSpin 0.9s linear infinite' }} />
+                        ) : (
+                          <FiEdit2 style={{ fontSize: 13 }} />
+                        )}
+                      </button>
                       <button title="Xóa" onClick={() => setDeleteConfirm(p.id)} style={iconBtn('#ef4444')}><FiTrash2 style={{ fontSize: 13 }} /></button>
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
           </tbody>
         </table>
         <div style={{ padding: '12px 16px', borderTop: '1px solid #f1f5f9', color: '#64748b', fontSize: 13 }}>
           Hiển thị <strong>{filtered.length}</strong> / <strong>{products.length}</strong> sản phẩm
         </div>
       </div>
-      {modal && <ProductModal product={modal.product} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && (
+        <ProductModal
+          key={modal.mode === 'edit' && modal.product?.productId != null ? `edit-${modal.product.productId}` : 'add'}
+          product={modal.product}
+          onSave={handleSave}
+          onClose={() => setModal(null)}
+        />
+      )}
       {discountProduct && <DiscountProgramModal product={discountProduct} onClose={() => setDiscountProduct(null)} />}
+      {viewProduct && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.40)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setViewProduct(null)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: 20,
+              width: 640,
+              maxWidth: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 24px 80px rgba(15,23,42,0.35)',
+              padding: '24px 28px 24px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 18,
+              }}
+            >
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 20,
+                  fontWeight: 800,
+                  color: '#0f172a',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Chi Tiết Sản Phẩm
+              </h2>
+              <button
+                onClick={() => setViewProduct(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  fontSize: 20,
+                }}
+              >
+                <FiX />
+              </button>
+            </div>
+            {viewProductLoading && (
+              <p style={{ textAlign: 'center', color: '#64748b' }}>Đang tải...</p>
+            )}
+            {viewProductError && (
+              <p style={{ textAlign: 'center', color: '#ef4444' }}>{viewProductError}</p>
+            )}
+            {!viewProductLoading && !viewProductError && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', gap: 18 }}>
+                  {viewProduct.imagesJson?.[0]?.url && (
+                    <img
+                      src={viewProduct.imagesJson[0].url}
+                      alt={viewProduct.productName}
+                      style={{
+                        width: 170,
+                        height: 170,
+                        objectFit: 'cover',
+                        borderRadius: 14,
+                        border: '1px solid #e2e8f0',
+                        background: '#f8fafc',
+                      }}
+                      onClick={() => setZoomImageUrl(viewProduct.imagesJson[0].url)}
+                    />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <h3
+                      style={{
+                        margin: 0,
+                        fontSize: 18,
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      {viewProduct.productName}
+                    </h3>
+                    <div
+                      style={{
+                        margin: '8px 0 10px',
+                        fontSize: 13.5,
+                        lineHeight: 1.6,
+                        color: '#64748b',
+                      }}
+                    >
+                      <strong style={{ color: '#0f172a', display: 'block', marginBottom: 4 }}>
+                        Mô tả sản phẩm:
+                      </strong>
+                      {parseDescriptionToDescs(viewProduct.description).map((d, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: 6 }}>
+                          <span style={{ color: '#9ca3af' }}>-</span>
+                          <span>
+                            {d.key && (
+                              <strong style={{ color: '#0f172a' }}>
+                                {d.key}:{' '}
+                              </strong>
+                            )}
+                            {d.value || (!d.key ? '' : undefined)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ margin: '4px 0', fontSize: 13.5, color: PRIMARY }}>
+                      <strong style={{ fontWeight: 700 }}>Giá bán:</strong>{' '}
+                      <strong>{fmtPrice(viewProduct.priceSell ?? 0)}</strong>
+                    </p>
+                    <p style={{ margin: '4px 0', fontSize: 13.5, color: '#374151' }}>
+                      <strong style={{ fontWeight: 700 }}>Số lượng:</strong>{' '}
+                      <span>{viewProduct.quantity ?? 0}</span>
+                    </p>
+                    <p style={{ margin: '4px 0', fontSize: 13.5, color: '#64748b' }}>
+                      <strong style={{ fontWeight: 700 }}>Danh mục:</strong>{' '}
+                      <span>
+                        {viewProduct.categoryName} / {viewProduct.subCategoryName}
+                      </span>
+                    </p>
+                    <p style={{ margin: '4px 0', fontSize: 13.5, color: '#64748b' }}>
+                      <strong style={{ fontWeight: 700 }}>Nơi sản xuất:</strong>{' '}
+                      <span>{viewProduct.manufacturingLocation}</span>
+                    </p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                  <button
+                    onClick={() => setViewProduct(null)}
+                    style={{
+                      padding: '9px 22px',
+                      borderRadius: 999,
+                      border: '1.5px solid #e2e8f0',
+                      background: '#f8fafc',
+                      color: '#374151',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Zoom ảnh lớn khi click */}
+      {zoomImageUrl && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.75)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setZoomImageUrl(null)}
+        >
+          <img
+            src={zoomImageUrl}
+            alt="Product zoom"
+            style={{
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              borderRadius: 16,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+              objectFit: 'contain',
+              background: '#fff',
+            }}
+          />
+        </div>
+      )}
       {deleteConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', textAlign: 'center' }}>
@@ -1193,6 +1784,23 @@ function DashboardView({ currentUser }) {
 
 // ── Sidebar ──
 function Sidebar({ activeNav, setActiveNav, currentUser, onLogout }) {
+  const navigate = useNavigate()
+
+  const navToPath = (label) => {
+    switch (label) {
+      case 'Dashboard':
+        return '/admin'
+      case 'Quản Lý Lô Hàng':
+        return '/admin/batch'
+      case 'Quản Lý Đơn Hàng':
+        return '/admin/orders'
+      case 'Quản Lý Sản Phẩm':
+        return '/admin/products'
+      default:
+        return '/admin'
+    }
+  }
+
   return (
     <aside style={{ width: 240, minWidth: 240, background: '#ffffff', color: '#1e293b', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', padding: '0 0 20px 0', overflowY: 'auto' }}>
       <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #e2e8f0' }}>
@@ -1216,7 +1824,12 @@ function Sidebar({ activeNav, setActiveNav, currentUser, onLogout }) {
           const Icon = item.icon
           const isActive = activeNav === item.label
           return (
-            <button key={item.label} onClick={() => setActiveNav(item.label)}
+            <button
+              key={item.label}
+              onClick={() => {
+                setActiveNav(item.label)
+                navigate(navToPath(item.label))
+              }}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: isActive ? `linear-gradient(135deg,${PRIMARY},${PRIMARY_DARK})` : 'transparent', color: isActive ? '#fff' : '#475569', border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'all 0.15s' }}
               onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#f1f5f9' }}
               onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
@@ -1246,10 +1859,14 @@ function Sidebar({ activeNav, setActiveNav, currentUser, onLogout }) {
 }
 
 // ── Main Component ──
-export default function AdminDashboard() {
+export default function AdminDashboard({ initialActiveNav }) {
   const { currentUser, logout } = useAuth()
   const navigate = useNavigate()
-  const [activeNav, setActiveNav] = useState('Dashboard')
+  const [activeNav, setActiveNav] = useState(initialActiveNav || 'Dashboard')
+
+  useEffect(() => {
+    if (initialActiveNav) setActiveNav(initialActiveNav)
+  }, [initialActiveNav])
 
   const handleLogout = () => { logout(); navigate('/login') }
 
