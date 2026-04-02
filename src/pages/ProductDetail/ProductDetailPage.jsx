@@ -11,7 +11,7 @@ import { useAuth } from '@/context/AuthContext'
 function ProductDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { cartItems, addToCart } = useCart()
+  const { addToCart } = useCart()
   const { currentUser } = useAuth()
   const [product, setProduct] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -56,29 +56,10 @@ function ProductDetailPage() {
     setQuantity((prev) => Math.max(1, prev - 1))
   }
 
-  const handleIncrease = () => {
-    const maxQty = product?.quantity ?? 1
-    setQuantity((prev) => Math.min(maxQty, prev + 1))
-  }
+  const MAX_SELECT_QTY = 9999
 
-  const validateStock = () => {
-    const available = product?.quantity ?? 0
-    const inCart = cartItems.find((item) => item.id === product.productId)?.quantity ?? 0
-    const totalRequested = inCart + quantity
-    if (available <= 0) {
-      toast.error('Sản phẩm hiện đã hết hàng.')
-      return false
-    }
-    if (totalRequested > available) {
-      const remain = Math.max(0, available - inCart)
-      toast.error(
-        remain > 0
-          ? `Bạn chỉ có thể thêm tối đa ${remain} sản phẩm nữa (tổng trong giỏ không vượt quá ${available}).`
-          : 'Số lượng trong giỏ đã đạt tối đa tồn kho.'
-      )
-      return false
-    }
-    return true
+  const handleIncrease = () => {
+    setQuantity((prev) => Math.min(MAX_SELECT_QTY, prev + 1))
   }
 
   const handleAddToCart = () => {
@@ -88,7 +69,6 @@ function ProductDetailPage() {
       navigate('/login')
       return
     }
-    if (!validateStock()) return
     const baseItem = {
       id: product.productId,
       name: product.productName,
@@ -111,7 +91,6 @@ function ProductDetailPage() {
       navigate('/login')
       return
     }
-    if (!validateStock()) return
     const baseItem = {
       id: product.productId,
       name: product.productName,
@@ -293,10 +272,6 @@ function ProductDetailPage() {
                 {/* Quick info */}
                 <div className="space-y-1 text-sm text-gray-700">
                   <p>
-                    <span className="font-semibold">Số lượng còn lại:</span>{' '}
-                    <span>{product.quantity ?? 0}</span>
-                  </p>
-                  <p>
                     <span className="font-semibold">Danh mục:</span>{' '}
                     <span>{product.categoryName} / {product.subCategoryName}</span>
                   </p>
@@ -324,7 +299,7 @@ function ProductDetailPage() {
                       type="button"
                       onClick={handleIncrease}
                       className="w-10 h-10 flex items-center justify-center text-xl text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={product && quantity >= (product.quantity ?? 1)}
+                      disabled={quantity >= MAX_SELECT_QTY}
                     >
                       +
                     </button>

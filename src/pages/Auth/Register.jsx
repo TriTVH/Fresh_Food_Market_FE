@@ -1,11 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { FiMail, FiLock, FiEye, FiEyeOff, FiUser, FiPhone } from 'react-icons/fi'
-import { FcGoogle } from 'react-icons/fc'
-import { FaFacebook } from 'react-icons/fa'
+import { FiLock, FiEye, FiEyeOff, FiPhone } from 'react-icons/fi'
 import { useAuth } from '@/context/AuthContext'
-import { register as registerApi, login as loginApi } from '@/api/apiService'
-import { ROLE_ID, getRoleName } from '@/utils/constants'
+import { register as registerApi } from '@/api/authApi'
 
 function Register() {
   const navigate = useNavigate()
@@ -15,12 +12,9 @@ function Register() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
     phone: '',
     password: '',
     confirmPassword: '',
-    agreeToTerms: false,
   })
 
   const handleSubmit = async (e) => {
@@ -41,9 +35,7 @@ function Register() {
 
     try {
       const registerResponse = await registerApi({
-        fullName: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
+        phone: formData.phone.trim(),
         password: formData.password,
       })
 
@@ -51,30 +43,18 @@ function Register() {
         throw new Error(registerResponse?.message || 'Đăng ký thất bại')
       }
 
-      // Đăng nhập luôn sau khi đăng ký
-      const loginResponse = await loginApi({
-        phone: formData.phone,
-        password: formData.password,
-      })
-
-      if (!loginResponse?.success) {
-        throw new Error(loginResponse?.message || 'Đăng nhập sau đăng ký thất bại')
+      const loginResult = await login(formData.phone.trim(), formData.password)
+      if (!loginResult?.success) {
+        throw new Error(loginResult?.error || 'Đăng nhập sau đăng ký thất bại. Vui lòng đăng nhập thủ công.')
       }
 
-      const account = loginResponse.data
-      const roleId = account?.role ?? ROLE_ID.CUSTOMER
-      const role = getRoleName(roleId)
-
-      login({
-        id: account?.accountId,
-        phone: account?.phone,
-        email: account?.email,
-        name: account?.username || formData.fullName,
-        roleId,
-        role,
-      })
-
-      navigate('/')
+      if (loginResult.user?.role === 'admin') {
+        navigate('/admin')
+      } else if (loginResult.user?.role === 'supplier') {
+        navigate('/supplier')
+      } else {
+        navigate('/')
+      }
     } catch (err) {
       console.error(err)
       setError(err.message || 'Có lỗi xảy ra, vui lòng thử lại!')
@@ -187,50 +167,10 @@ function Register() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Full Name */}
-              <div>
-                <label htmlFor="fullName" className="block text-gray-700 text-sm font-semibold mb-2">
-                  Họ và Tên
-                </label>
-                <div className="relative">
-                  <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="text"
-                    id="fullName"
-                    name="fullName"
-                    value={formData.fullName}
-                    onChange={handleChange}
-                    placeholder="Nguyễn Văn A"
-                    className="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#75b06f] focus:border-[#75b06f] transition-all hover:border-gray-300 bg-white"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Email */}
-              <div>
-                <label htmlFor="email" className="block text-gray-700 text-sm font-semibold mb-2">
-                  Email
-                </label>
-                <div className="relative">
-                  <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="email@example.com"
-                    className="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#75b06f] focus:border-[#75b06f] transition-all hover:border-gray-300 bg-white"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Phone */}
+              {/* Phone — gửi lên POST /auth/register */}
               <div>
                 <label htmlFor="phone" className="block text-gray-700 text-sm font-semibold mb-2">
-                  Số Điện Thoại
+                  Số điện thoại
                 </label>
                 <div className="relative">
                   <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -247,10 +187,10 @@ function Register() {
                 </div>
               </div>
 
-              {/* Password */}
+              {/* Password — gửi lên API đăng ký */}
               <div>
                 <label htmlFor="password" className="block text-gray-700 text-sm font-semibold mb-2">
-                  Mật Khẩu
+                  Mật khẩu
                 </label>
                 <div className="relative">
                   <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -275,13 +215,13 @@ function Register() {
                 </div>
               </div>
 
-              {/* Confirm Password */}
+              {/* Xác nhận mật khẩu — chỉ kiểm tra trên client */}
               <div>
                 <label
                   htmlFor="confirmPassword"
                   className="block text-gray-700 text-sm font-semibold mb-2"
                 >
-                  Xác Nhận Mật Khẩu
+                  Xác nhận mật khẩu
                 </label>
                 <div className="relative">
                   <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -309,28 +249,16 @@ function Register() {
                 </div>
               </div>
 
-              {/* Terms Checkbox */}
-              <div className="flex items-start gap-3 pt-2">
-                <input
-                  type="checkbox"
-                  id="agreeToTerms"
-                  name="agreeToTerms"
-                  checked={formData.agreeToTerms}
-                  onChange={handleChange}
-                  className="w-4 h-4 mt-1 text-[#75b06f] border-gray-300 rounded focus:ring-[#75b06f] cursor-pointer"
-                  required
-                />
-                <label htmlFor="agreeToTerms" className="text-gray-600 text-sm leading-relaxed">
-                  Tôi đồng ý với{' '}
-                  <Link to="/terms" className="text-[#75b06f] hover:text-[#5a9450] font-semibold transition-colors">
-                    Điều khoản dịch vụ
-                  </Link>{' '}
-                  và{' '}
-                  <Link to="/privacy" className="text-[#75b06f] hover:text-[#5a9450] font-semibold transition-colors">
-                    Chính sách bảo mật
-                  </Link>
-                </label>
-              </div>
+              <p className="text-xs text-gray-500 pt-1">
+                Chỉ cần số điện thoại và mật khẩu theo yêu cầu hệ thống.{' '}
+                <Link to="/terms" className="text-[#75b06f] hover:underline">
+                  Điều khoản
+                </Link>
+                {' · '}
+                <Link to="/privacy" className="text-[#75b06f] hover:underline">
+                  Bảo mật
+                </Link>
+              </p>
 
               {/* Submit Button */}
               <button
@@ -367,35 +295,6 @@ function Register() {
                 )}
               </button>
             </form>
-
-            {/* Divider */}
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-gradient-to-br from-white to-gray-50 text-gray-500">
-                  Hoặc đăng ký với
-                </span>
-              </div>
-            </div>
-
-            {/* Social Register */}
-            <div className="grid grid-cols-2 gap-3">
-              <button className="flex items-center justify-center gap-2 py-3 px-4 border-2 border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all group">
-                <FcGoogle className="w-5 h-5" />
-                <span className="text-sm font-semibold text-gray-700 group-hover:text-gray-900">
-                  Google
-                </span>
-              </button>
-
-              <button className="flex items-center justify-center gap-2 py-3 px-4 border-2 border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all group">
-                <FaFacebook className="w-5 h-5 text-blue-600" />
-                <span className="text-sm font-semibold text-gray-700 group-hover:text-gray-900">
-                  Facebook
-                </span>
-              </button>
-            </div>
 
             {/* Login Link */}
             <div className="text-center mt-6">

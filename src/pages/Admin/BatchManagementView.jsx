@@ -399,7 +399,7 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
       }
       // Chờ parent refresh danh sách (GET /batch) xong rồi mới đóng modal + toast.
       if (onConfirm) await onConfirm(payload)
-      onClose()
+    onClose()
       toast.success(res?.message || 'Đã tạo lô hàng.')
     } catch (err) {
       const msg = getApiErrorMessage(err) || err?.message || 'Tạo lô hàng thất bại.'
@@ -538,7 +538,7 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
                           <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a' }}>
                             Còn lại: {p.remaining != null ? p.remaining : '—'}
                           </div>
-                        </div>
+                      </div>
                         <button
                           type="button"
                           onClick={() => addProduct(p)}
@@ -555,7 +555,7 @@ function AddBatchModal({ onClose, onConfirm, batchCount }) {
                           }}
                         >
                           + Thêm
-                        </button>
+                      </button>
                     </div>
                   )
                   })

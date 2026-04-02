@@ -314,14 +314,12 @@ export const login = async (credentials) => {
 }
 
 /**
- * Register. Body: phone, password; optional: email, username
+ * Register. Body: { phone, password } — khớp POST /auth/register
  */
 export const register = async (userData) => {
   const { data } = await api.post('/auth/register', {
     phone: userData.phone,
     password: userData.password,
-    email: userData.email || undefined,
-    username: userData.fullName || undefined,
   })
   return data
 }

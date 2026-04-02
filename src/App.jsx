@@ -5,6 +5,7 @@ import Home from '@pages/Home/Home'
 import Login from '@pages/Auth/Login'
 import Register from '@pages/Auth/Register'
 import CartPage from '@pages/Cart/CartPage'
+import CheckoutPage from '@pages/Checkout/CheckoutPage'
 import ProductsPage from '@pages/Products/ProductsPage'
 import ProductDetailPage from '@pages/ProductDetail/ProductDetailPage'
 import FruitsPage from '@pages/Fruits/FruitsPage'
@@ -19,6 +20,9 @@ import TermsPage from '@pages/Terms/TermsPage'
 import PrivacyPolicyPage from '@pages/Privacy/PrivacyPolicyPage'
 import ShoppingGuidePage from '@pages/ShoppingGuide/ShoppingGuidePage'
 import ReturnPolicyPage from '@pages/ReturnPolicy/ReturnPolicyPage'
+import PaymentSuccessPage from '@pages/Payment/PaymentSuccessPage'
+import PaymentFailurePage from '@pages/Payment/PaymentFailurePage'
+import PaymentPendingPage from '@pages/Payment/PaymentPendingPage'
 import AdminDashboard from '@pages/Admin/AdminDashboard'
 import AdminProductsPage from '@pages/Admin/AdminProductsPage'
 import SupplierDashboard from '@pages/Supplier/SupplierDashboard'
@@ -39,7 +43,18 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/cart" element={<CartPage />} />
+            <Route
+              path="/cart"
+              element={
+                <ProtectedRoute allowedRoles={['customer', 'admin', 'supplier', 'staff']}>
+                  <CartPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/checkout" element={<CheckoutPage />} />
+            <Route path="/payment/success" element={<PaymentSuccessPage />} />
+            <Route path="/payment/failure" element={<PaymentFailurePage />} />
+            <Route path="/payment/pending" element={<PaymentPendingPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/product/:id" element={<ProductDetailPage />} />
             <Route path="/fruits" element={<FruitsPage />} />

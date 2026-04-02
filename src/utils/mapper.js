@@ -73,12 +73,26 @@ export const mapVoucherToFrontend = (voucherDto) => {
 
 // ==================== ORDER MAPPER ====================
 export const mapOrderDtoToFrontend = (orderDto) => {
+    const rawStatus = orderDto.orderStatus || orderDto.status || 'PENDING';
+    const items = Array.isArray(orderDto.items) ? orderDto.items : [];
+    const subtotal =
+        orderDto.subtotal != null
+            ? orderDto.subtotal
+            : items.reduce((sum, item) => sum + (item.subTotal || item.subtotal || 0), 0);
+    const discountAmount = orderDto.discountAmount != null ? orderDto.discountAmount : 0;
+    const shippingFee = orderDto.shippingFee != null ? orderDto.shippingFee : 0;
+    const totalAmount =
+        orderDto.totalAmount != null ? orderDto.totalAmount : subtotal - discountAmount + shippingFee;
+
     return {
         order_id: orderDto.orderId,
-        order_date: orderDto.createdAtUtc,
-        status: orderDto.orderStatus.toLowerCase(),
-        total_amount: orderDto.items.reduce((sum, item) => sum + item.subTotal, 0),
-        items: orderDto.items.map(item => ({
+        order_date: orderDto.createdAtUtc || orderDto.createdDate || orderDto.createdAt,
+        status: typeof rawStatus === 'string' ? rawStatus.toLowerCase() : 'pending',
+        subtotal,
+        discount_amount: discountAmount,
+        shipping_fee: shippingFee,
+        total_amount: totalAmount,
+        items: items.map(item => ({
             id: item.productId,
             name: item.productName || 'Unknown Product',
             price: item.price,
@@ -87,12 +101,12 @@ export const mapOrderDtoToFrontend = (orderDto) => {
             image: 'https://placehold.co/200x200?text=Item' 
         })),
         shipping_address: {
-            street: 'Default Street', 
-            ward: 'Default Ward',
-            city: 'Default City'
+            full: orderDto.shippingAddress || ''
         },
         payment_method: orderDto.paymentMethod,
-        shipping_fee: 30000 
+        shipping_name: orderDto.shippingName || '',
+        shipping_phone: orderDto.shippingPhone || '',
+        transaction_status: orderDto.transactionStatus || '',
     };
 };
 
