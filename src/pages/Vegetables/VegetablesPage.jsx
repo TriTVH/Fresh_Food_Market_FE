@@ -11,8 +11,12 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
+<<<<<<< HEAD
 import { fetchProducts } from '@/api/productApi'
 import { mapProductDtoToFrontend, matchCategory } from '@/utils/mapper'
+=======
+import { fetchActiveProductsByCategory } from '@/api/apiService'
+>>>>>>> tri
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -33,6 +37,7 @@ function VegetablesPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
+<<<<<<< HEAD
 
   const [allVegetables, setAllVegetables] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -53,6 +58,27 @@ function VegetablesPage() {
       }
     };
     loadProducts();
+=======
+  const [allVegetables, setAllVegetables] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllVegetables(data.vegetables || [])
+      } catch (err) {
+        console.error(err)
+        setError('Không tải được sản phẩm rau, củ, nấm.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+>>>>>>> tri
   }, [])
 
   // Category options for dropdown

@@ -11,8 +11,12 @@ import {
 import Header from '@/components/layout/Header/Header'
 import Footer from '@/components/layout/Footer/Footer'
 import ProductCard from '@/components/product/ProductCard/ProductCard'
+<<<<<<< HEAD
 import { fetchProducts } from '@/api/productApi'
 import { mapProductDtoToFrontend, matchCategory } from '@/utils/mapper'
+=======
+import { fetchActiveProductsByCategory } from '@/api/apiService'
+>>>>>>> tri
 
 // Utility function to remove Vietnamese accents
 const removeVietnameseAccents = (str) => {
@@ -33,6 +37,7 @@ function SeafoodMeatPage() {
   const [goToPage, setGoToPage] = useState('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const productsPerPage = 12
+<<<<<<< HEAD
 
   const [allSeafoodMeat, setAllSeafoodMeat] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -53,6 +58,27 @@ function SeafoodMeatPage() {
       }
     };
     loadProducts();
+=======
+  const [allSeafoodMeat, setAllSeafoodMeat] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await fetchActiveProductsByCategory()
+        setAllSeafoodMeat(data.meatSeafood || [])
+      } catch (err) {
+        console.error(err)
+        setError('Không tải được sản phẩm thịt, cá & hải sản.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+>>>>>>> tri
   }, [])
 
   // Category options for dropdown

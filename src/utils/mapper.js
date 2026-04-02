@@ -51,12 +51,25 @@ export const mapNewsDtoToFrontend = (newsDto) => {
 };
 
 // ==================== VOUCHER MAPPER ====================
+<<<<<<< HEAD
 export const mapVoucherToFrontend = (voucherDto) => {
+=======
+/** API: validFrom = ngưỡng đơn tối thiểu theo nghìn đ (300 → 300.000đ); discountAmount = trần giảm (null = không trần theo %) */
+export const mapVoucherToFrontend = (voucherDto) => {
+    const validFrom = voucherDto.validFrom
+    const minOrder =
+        validFrom == null ? 0 : validFrom < 10000 ? validFrom * 1000 : validFrom
+
+    const rawCap = voucherDto.discountAmount
+    const maxDiscount = rawCap != null && rawCap > 0 ? rawCap : null
+
+>>>>>>> tri
     return {
         id: voucherDto.voucherId,
         code: voucherDto.voucherCode,
         title: voucherDto.voucherName || 'Khuyến mãi đặc biệt',
         discount: voucherDto.discountPercentage || 0,
+<<<<<<< HEAD
         maxDiscount: voucherDto.discountAmount || 0,
         minOrder: voucherDto.validFrom || 0,
         description: voucherDto.description || '',
@@ -105,6 +118,50 @@ export const mapOrderDtoToFrontend = (orderDto) => {
         },
         payment_method: orderDto.paymentMethod || '',
         shipping_fee: orderDto.shippingFee || 0
+=======
+        maxDiscount,
+        minOrder,
+        description: voucherDto.description || '',
+    }
+}
+
+// ==================== ORDER MAPPER ====================
+export const mapOrderDtoToFrontend = (orderDto) => {
+    const rawStatus = orderDto.orderStatus || orderDto.status || 'PENDING';
+    const items = Array.isArray(orderDto.items) ? orderDto.items : [];
+    const subtotal =
+        orderDto.subtotal != null
+            ? orderDto.subtotal
+            : items.reduce((sum, item) => sum + (item.subTotal || item.subtotal || 0), 0);
+    const discountAmount = orderDto.discountAmount != null ? orderDto.discountAmount : 0;
+    const shippingFee = orderDto.shippingFee != null ? orderDto.shippingFee : 0;
+    const totalAmount =
+        orderDto.totalAmount != null ? orderDto.totalAmount : subtotal - discountAmount + shippingFee;
+
+    return {
+        order_id: orderDto.orderId,
+        order_date: orderDto.createdAtUtc || orderDto.createdDate || orderDto.createdAt,
+        status: typeof rawStatus === 'string' ? rawStatus.toLowerCase() : 'pending',
+        subtotal,
+        discount_amount: discountAmount,
+        shipping_fee: shippingFee,
+        total_amount: totalAmount,
+        items: items.map(item => ({
+            id: item.productId,
+            name: item.productName || 'Unknown Product',
+            price: item.price,
+            quantity: item.quantity,
+            // Fallback image
+            image: 'https://placehold.co/200x200?text=Item' 
+        })),
+        shipping_address: {
+            full: orderDto.shippingAddress || ''
+        },
+        payment_method: orderDto.paymentMethod,
+        shipping_name: orderDto.shippingName || '',
+        shipping_phone: orderDto.shippingPhone || '',
+        transaction_status: orderDto.transactionStatus || '',
+>>>>>>> tri
     };
 };
 

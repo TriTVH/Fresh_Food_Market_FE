@@ -32,11 +32,18 @@ export const login = async (credentials) => {
  * @returns {Promise<Object>} Auth data
  */
 export const register = async (userData) => {
+<<<<<<< HEAD
     const data = {
         Phone: userData.phone || userData.Phone,
         Password: userData.password || userData.Password
     };
     
     const response = await axiosClient.post('/auth/register', data);
+=======
+    const response = await axiosClient.post('/auth/register', {
+        phone: userData.phone || userData.Phone,
+        password: userData.password || userData.Password,
+    });
+>>>>>>> tri
     return response;
 }

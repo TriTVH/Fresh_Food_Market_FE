@@ -23,15 +23,18 @@ export function CartProvider({ children }) {
     localStorage.setItem('freshmarket_cart', JSON.stringify(cartItems))
   }, [cartItems])
 
-  const addToCart = (product) => {
+  const addToCart = (product, qty = 1) => {
+    const quantityToAdd = Number.isFinite(qty) && qty > 0 ? qty : 1
     setCartItems((prev) => {
       const existing = prev.find((item) => item.id === product.id)
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + quantityToAdd }
+            : item
         )
       }
-      return [...prev, { ...product, quantity: 1 }]
+      return [...prev, { ...product, quantity: quantityToAdd }]
     })
   }
 

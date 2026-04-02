@@ -24,7 +24,10 @@ function ProductCard({ product }) {
 
   return (
     <>
-      <div className="group relative bg-white rounded-xl sm:rounded-2xl border border-gray-100 overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+      <div
+        className="group relative bg-white rounded-xl sm:rounded-2xl border border-gray-100 overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
+        onClick={() => navigate(`/product/${product.id}`)}
+      >
         {/* Discount Badge */}
         {product.discount > 0 && (
           <div className="absolute top-2 left-2 sm:top-3 sm:left-3 bg-red-500 text-white px-2 py-0.5 sm:px-3 sm:py-1 rounded-full z-10">
@@ -70,13 +73,13 @@ function ProductCard({ product }) {
                 />
               ))}
             </div>
-            {product.reviewCount > 0 && (
+            {product.reviewCount !== undefined && product.reviewCount !== null && (
               <span className="text-xs sm:text-sm text-[#63b45b]">({product.reviewCount})</span>
             )}
           </div>
 
           {/* Sold Count */}
-          {product.soldCount > 0 && (
+          {product.soldCount !== undefined && product.soldCount !== null && (
             <p className="text-xs sm:text-sm text-gray-500">Đã bán {product.soldCount}</p>
           )}
 
@@ -95,7 +98,10 @@ function ProductCard({ product }) {
           {/* Add to Cart Button */}
           <button
             className="w-full bg-[#75b06f] hover:bg-[#63a05d] text-white py-2 sm:py-3 rounded-lg sm:rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 font-semibold text-sm sm:text-base group-hover:shadow-lg"
-            onClick={handleAddToCart}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleAddToCart()
+            }}
           >
             <FiShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>Thêm vào giỏ</span>

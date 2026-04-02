@@ -1,4 +1,22 @@
-// Mock accounts for testing
+// Phân quyền: role_id từ API (1=ADMIN, 2=CUSTOMER, 3=SUPPLIER, 4=STAFF)
+export const ROLE_ID = {
+  ADMIN: 1,
+  CUSTOMER: 2,
+  SUPPLIER: 3,
+  STAFF: 4,
+}
+
+export const ROLE_NAME = {
+  [ROLE_ID.ADMIN]: 'admin',
+  [ROLE_ID.CUSTOMER]: 'customer',
+  [ROLE_ID.SUPPLIER]: 'supplier',
+  [ROLE_ID.STAFF]: 'staff',
+}
+
+/** role_id (number) -> role name (string) */
+export const getRoleName = (roleId) => ROLE_NAME[roleId] ?? 'customer'
+
+// Mock accounts for testing (có thể xóa khi không dùng)
 export const MOCK_ACCOUNTS = [
     {
         email: 'customer@freshmarket.vn',

@@ -13,23 +13,37 @@ import {
 } from 'react-icons/fi'
 import { useCart } from '@/context/CartContext'
 import { useAuth } from '@/context/AuthContext'
+<<<<<<< HEAD
 import { placeOrder } from '@/api/orderApi'
 import { fetchVouchers } from '@/api/voucherApi'
 import { mapVoucherToFrontend } from '@/utils/mapper'
 import LoginAlertModal from '@/components/common/LoginAlertModal/LoginAlertModal'
+=======
+import { fetchVouchers } from '@/api/voucherApi'
+import { mapVoucherToFrontend } from '@/utils/mapper'
+import LoginAlertModal from '@/components/common/LoginAlertModal/LoginAlertModal'
+import Header from '@/components/layout/Header/Header'
+import Footer from '@/components/layout/Footer/Footer'
+import FloatingChatButton from '@/components/common/FloatingChatButton/FloatingChatButton'
+>>>>>>> tri
 
 function CartPage() {
   const navigate = useNavigate()
   const { currentUser: user } = useAuth()
   const { cartItems, updateQuantity, removeFromCart, clearCart } = useCart()
-  const [selectedVoucher, setSelectedVoucher] = useState(null)
+  const [selectedVouchers, setSelectedVouchers] = useState([])
   const [showVoucherModal, setShowVoucherModal] = useState(false)
   const [vouchers, setVouchers] = useState([])
   const [isLoadingVouchers, setIsLoadingVouchers] = useState(false)
+<<<<<<< HEAD
+=======
+  const [voucherLoadError, setVoucherLoadError] = useState(null)
+>>>>>>> tri
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
 
   useEffect(() => {
+<<<<<<< HEAD
     if (showVoucherModal && user) {
         const loadVouchers = async () => {
             setIsLoadingVouchers(true);
@@ -47,14 +61,39 @@ function CartPage() {
         loadVouchers();
     }
   }, [showVoucherModal, user])
+=======
+    if (!showVoucherModal) return
+
+    const loadVouchers = async () => {
+      setIsLoadingVouchers(true)
+      setVoucherLoadError(null)
+      try {
+        const response = await fetchVouchers()
+        if (response?.success && Array.isArray(response.data)) {
+          setVouchers(response.data.map(mapVoucherToFrontend))
+        } else {
+          setVouchers([])
+        }
+      } catch (err) {
+        console.error('Failed to load vouchers', err)
+        setVoucherLoadError('Không tải được danh sách mã giảm giá.')
+        setVouchers([])
+      } finally {
+        setIsLoadingVouchers(false)
+      }
+    }
+
+    loadVouchers()
+  }, [showVoucherModal])
+>>>>>>> tri
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN').format(price) + 'đ'
   }
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const shippingFee = subtotal > 0 ? 30000 : 0
 
+<<<<<<< HEAD
   let voucherDiscount = 0
   if (selectedVoucher && subtotal >= selectedVoucher.minOrder) {
     voucherDiscount = Math.min(
@@ -62,8 +101,20 @@ function CartPage() {
       selectedVoucher.maxDiscount
     )
   }
+=======
+  const applicableVouchers = selectedVouchers.filter((v) => subtotal >= v.minOrder)
+>>>>>>> tri
 
-  const total = subtotal + shippingFee - voucherDiscount
+  const voucherDiscountDetails = applicableVouchers.map((v) => {
+    const raw = Math.round((subtotal * v.discount) / 100)
+    const capped = v.maxDiscount && v.maxDiscount > 0 ? Math.min(raw, v.maxDiscount) : raw
+    return { ...v, discountAmount: capped }
+  })
+
+  const voucherDiscountRaw = voucherDiscountDetails.reduce((sum, v) => sum + v.discountAmount, 0)
+
+  const voucherDiscount = Math.min(voucherDiscountRaw, subtotal)
+  const total = Math.max(0, subtotal - voucherDiscount)
 
   const handleQuantityChange = (id, currentQuantity, change) => {
     const newQuantity = currentQuantity + change
@@ -77,6 +128,7 @@ function CartPage() {
       setIsLoginModalOpen(true)
       return
     }
+<<<<<<< HEAD
 
     try {
         const orderData = {
@@ -98,20 +150,53 @@ function CartPage() {
     } catch (err) {
         alert('Có lỗi xảy ra khi đặt hàng: ' + err.message);
     }
+=======
+    if (voucherDiscountRaw > subtotal) {
+      alert('Tổng giảm giá từ mã không được lớn hơn tạm tính. Vui lòng bỏ bớt mã giảm giá.')
+      return
+    }
+    navigate('/checkout', {
+      state: {
+        selectedVouchers,
+      },
+    })
+>>>>>>> tri
   }
 
-  const handleSelectVoucher = (voucher) => {
+  const toggleVoucherSelection = (voucher) => {
     if (subtotal < voucher.minOrder) {
       alert(`Đơn hàng tối thiểu ${formatPrice(voucher.minOrder)} để sử dụng voucher này!`)
       return
     }
-    setSelectedVoucher(voucher)
-    setShowVoucherModal(false)
+    setSelectedVouchers((prev) => {
+      const exists = prev.some((v) => v.id === voucher.id)
+      if (exists) {
+        // bỏ chọn
+        return prev.filter((v) => v.id !== voucher.id)
+      }
+
+      // thử cộng thêm voucher mới, nếu tổng giảm > subtotal thì không cho chọn
+      const tempVouchers = [...prev, voucher]
+      const tempApplicable = tempVouchers.filter((v) => subtotal >= v.minOrder)
+      const tempTotalDiscount = tempApplicable.reduce((sum, v) => {
+        const raw = Math.round((subtotal * v.discount) / 100)
+        const capped = v.maxDiscount && v.maxDiscount > 0 ? Math.min(raw, v.maxDiscount) : raw
+        return sum + capped
+      }, 0)
+
+      if (tempTotalDiscount > subtotal) {
+        alert('Tổng giảm giá từ mã không được lớn hơn tạm tính.')
+        return prev
+      }
+
+      return tempVouchers
+    })
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
-      <div className="container mx-auto px-3 sm:px-4">
+    <div className="min-h-screen bg-gray-50">
+      <Header />
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {/* Header */}
         <div className="mb-5 sm:mb-8">
           <button
@@ -121,14 +206,7 @@ function CartPage() {
             <FiArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             <span className="font-semibold text-sm sm:text-base">Tiếp Tục Mua Sắm</span>
           </button>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">
-            Giỏ Hàng Của Bạn
-          </h1>
-          <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">
-            {cartItems.length > 0
-              ? `Bạn có ${cartItems.length} sản phẩm trong giỏ hàng`
-              : 'Giỏ hàng của bạn đang trống'}
-          </p>
+          
         </div>
 
         {cartItems.length === 0 ? (
@@ -182,15 +260,58 @@ function CartPage() {
                     <FiTag className="text-[#75b06f]" />
                     <span className="font-semibold">Mã Giảm Giá</span>
                   </div>
+<<<<<<< HEAD
                   {selectedVoucher ? (
                     <div className="bg-green-50 border-2 border-[#75b06f] rounded-lg p-3 flex justify-between">
                       <div>
                         <p className="font-bold text-[#75b06f]">{selectedVoucher.code}</p>
                         <p className="text-xs text-gray-500">Giảm {selectedVoucher.discount}% (Tối đa {formatPrice(selectedVoucher.maxDiscount)})</p>
+=======
+                  {selectedVouchers.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        {selectedVouchers.map((v) => (
+                          <div
+                            key={v.id}
+                            className="bg-green-50 border-2 border-[#75b06f] rounded-lg p-3 flex justify-between items-center"
+                          >
+                            <div>
+                              <p className="font-bold text-[#75b06f] text-sm">{v.code}</p>
+                              <p className="text-xs text-gray-600">
+                                Giảm {v.discount}% (Đơn từ {formatPrice(v.minOrder)}
+                                {v.maxDiscount ? `, tối đa ${formatPrice(v.maxDiscount)}` : ''})
+                              </p>
+                            </div>
+                            <button
+                              onClick={() =>
+                                setSelectedVouchers((prev) => prev.filter((x) => x.id !== v.id))
+                              }
+                              className="text-red-500 text-xs"
+                            >
+                              Xóa
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        <button
+                          onClick={() => setSelectedVouchers([])}
+                          className="text-xs text-gray-500 underline"
+                        >
+                          Xóa tất cả
+                        </button>
+                        <button
+                          onClick={() => setShowVoucherModal(true)}
+                          className="text-xs text-[#75b06f] font-semibold"
+                        >
+                          + Thêm mã khác
+                        </button>
+>>>>>>> tri
                       </div>
                       <button onClick={() => setSelectedVoucher(null)} className="text-red-500 text-xs">Xóa</button>
                     </div>
                   ) : (
+<<<<<<< HEAD
                     <button onClick={() => setShowVoucherModal(true)} className="w-full border-2 border-dashed rounded-lg p-3 text-sm text-gray-500">+ Chọn mã giảm giá</button>
                   )}
                 </div>
@@ -199,6 +320,43 @@ function CartPage() {
                   <div className="flex justify-between text-sm"><span>Phí vận chuyển:</span><span>{formatPrice(shippingFee)}</span></div>
                   {voucherDiscount > 0 && <div className="flex justify-between text-sm text-green-600"><span>Giảm giá:</span><span>-{formatPrice(voucherDiscount)}</span></div>}
                   <div className="flex justify-between text-lg font-bold border-t pt-2"><span>Tổng cộng:</span><span className="text-[#75b06f]">{formatPrice(total)}</span></div>
+=======
+                    <button
+                      onClick={() => setShowVoucherModal(true)}
+                      className="w-full border-2 border-dashed rounded-lg p-3 text-sm text-gray-500"
+                    >
+                      + Chọn mã giảm giá
+                    </button>
+                  )}
+                </div>
+                <div className="border-t pt-4 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Tạm tính:</span>
+                    <span>{formatPrice(subtotal)}</span>
+                  </div>
+
+                  {voucherDiscountDetails.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-green-700 font-medium">
+                        <span>Giảm giá từ mã:</span>
+                        <span>-{formatPrice(voucherDiscount)}</span>
+                      </div>
+                      <div className="bg-green-50 border border-green-100 rounded-lg p-2 space-y-1 text-xs">
+                        {voucherDiscountDetails.map((v) => (
+                          <div key={v.id} className="flex justify-between">
+                            <span className="font-semibold">{v.code}</span>
+                            <span>-{formatPrice(v.discountAmount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-lg font-bold border-t pt-2">
+                    <span>Tổng cộng:</span>
+                    <span className="text-[#75b06f]">{formatPrice(total)}</span>
+                  </div>
+>>>>>>> tri
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg flex gap-3">
                   <FiPackage className="text-blue-600 mt-1" />
@@ -219,6 +377,7 @@ function CartPage() {
                 <button onClick={() => setShowVoucherModal(false)} className="text-2xl">×</button>
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
+<<<<<<< HEAD
                 {isLoadingVouchers ? <p className="text-center">Đang tải...</p> : vouchers.map(v => (
                   <div key={v.id} onClick={() => subtotal >= v.minOrder && handleSelectVoucher(v)} className={`border-2 rounded-xl p-4 cursor-pointer ${selectedVoucher?.id === v.id ? 'border-[#75b06f] bg-green-50' : subtotal >= v.minOrder ? 'border-gray-200' : 'opacity-50'}`}>
                     <div className="flex justify-between">
@@ -229,6 +388,47 @@ function CartPage() {
                     <p className="text-xs text-[#75b06f] font-bold mt-1">Giảm {v.discount}% (Đơn từ {formatPrice(v.minOrder)})</p>
                   </div>
                 ))}
+=======
+                {isLoadingVouchers ? (
+                  <p className="text-center">Đang tải...</p>
+                ) : vouchers.length === 0 ? (
+                  <p className="text-center text-sm text-gray-500">Không có mã giảm giá khả dụng.</p>
+                ) : (
+                  vouchers.map((v) => {
+                    const disabled = subtotal < v.minOrder
+                    const isSelected = selectedVouchers.some((sv) => sv.id === v.id)
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => !disabled && toggleVoucherSelection(v)}
+                        className={`w-full text-left border-2 rounded-xl p-4 cursor-pointer transition ${
+                          disabled
+                            ? 'opacity-50 cursor-not-allowed'
+                            : isSelected
+                            ? 'border-[#75b06f] bg-green-50'
+                            : 'border-gray-200 hover:border-[#75b06f]/70'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <p className="font-bold text-lg">{v.code}</p>
+                          {isSelected && <FiCheckCircle className="text-[#75b06f]" />}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{v.title}</p>
+                        <p className="text-xs text-[#75b06f] font-semibold mt-1">
+                          Giảm {v.discount}% (Đơn từ {formatPrice(v.minOrder)}
+                          {v.maxDiscount ? `, tối đa ${formatPrice(v.maxDiscount)}` : ''})
+                        </p>
+                        {disabled && (
+                          <p className="text-[11px] text-red-500 mt-1">
+                            Đơn hàng tối thiểu {formatPrice(v.minOrder)} để áp dụng mã này.
+                          </p>
+                        )}
+                      </button>
+                    )
+                  })
+                )}
+>>>>>>> tri
               </div>
             </div>
           </div>
@@ -254,6 +454,8 @@ function CartPage() {
         {/* Login Alert Modal */}
         <LoginAlertModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} onLogin={() => navigate('/login')} />
       </div>
+      <Footer />
+      <FloatingChatButton />
     </div>
   )
 }
