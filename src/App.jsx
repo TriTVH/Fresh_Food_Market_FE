@@ -102,6 +102,14 @@ function App() {
               }
             />
             <Route
+              path="/admin/voucher"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminDashboard initialActiveNav="Quản Lý Voucher" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/supplier"
               element={
                 <ProtectedRoute allowedRoles={['supplier']}>

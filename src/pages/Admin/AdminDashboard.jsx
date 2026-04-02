@@ -5,11 +5,12 @@ import {
   FiGrid, FiPackage, FiBox, FiShoppingCart,
   FiHome, FiLogOut, FiEye, FiSearch,
   FiCheckSquare, FiTrendingUp, FiCalendar,
-  FiEdit2, FiTrash2, FiPercent, FiPlus, FiX, FiLoader,
+  FiEdit2, FiTrash2, FiPercent, FiPlus, FiX, FiLoader, FiGift,
 } from 'react-icons/fi'
 import { FaLeaf, FaStar, FaStarHalfAlt, FaRegStar } from 'react-icons/fa'
 import BatchManagementView from './BatchManagementView'
 import OrderManagementView from './OrderManagementView'
+import VoucherManagementView from './VoucherManagementView'
 import { toast } from 'react-toastify'
 import { fetchAllProducts, uploadImageToCloudinary, createProduct, updateProduct, fetchProductDetail, getApiErrorMessage } from '@/api/apiService'
 
@@ -273,6 +274,7 @@ const NAV_ITEMS = [
   { label: 'Quản Lý Sản Phẩm', icon: FiPackage, desc: 'Danh mục sản phẩm' },
   { label: 'Quản Lý Lô Hàng', icon: FiBox, desc: 'Nhập kho & hạn sử dụng' },
   { label: 'Quản Lý Đơn Hàng', icon: FiShoppingCart, desc: 'Đơn hàng & vận chuyển' },
+  { label: 'Quản Lý Voucher', icon: FiGift, desc: 'Mã giảm giá' },
 ]
 
 // ── Helpers ──
@@ -1717,6 +1719,8 @@ function Sidebar({ activeNav, setActiveNav, currentUser, onLogout }) {
         return '/admin/orders'
       case 'Quản Lý Sản Phẩm':
         return '/admin/products'
+      case 'Quản Lý Voucher':
+        return '/admin/voucher'
       default:
         return '/admin'
     }
@@ -1796,6 +1800,7 @@ export default function AdminDashboard({ initialActiveNav }) {
       case 'Quản Lý Sản Phẩm': return <ProductManagementView />
       case 'Quản Lý Lô Hàng': return <BatchManagementView />
       case 'Quản Lý Đơn Hàng': return <OrderManagementView />
+      case 'Quản Lý Voucher': return <VoucherManagementView />
       default: return <DashboardView currentUser={currentUser} />
     }
   }

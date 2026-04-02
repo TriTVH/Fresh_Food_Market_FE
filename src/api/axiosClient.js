@@ -89,7 +89,20 @@ axiosClient.interceptors.response.use(
             refreshPromise = null;
 
             const body = refreshResponse.data;
-            if (!body?.success || !body.data?.token) {
+            const inner = body?.data ?? body?.Data;
+            const newToken =
+                inner?.token ??
+                inner?.accessToken ??
+                inner?.access_token ??
+                inner?.Token ??
+                inner?.AccessToken;
+            const newRefreshToken =
+                inner?.refreshToken ??
+                inner?.refresh_token ??
+                inner?.RefreshToken;
+            const ok = body?.success ?? body?.Success;
+
+            if (!ok || !newToken) {
                 clearTokens();
                 if (window.location.pathname !== '/login') {
                     window.location.href = '/login';
@@ -97,8 +110,6 @@ axiosClient.interceptors.response.use(
                 return Promise.reject(body || error);
             }
 
-            const newToken = body.data.token;
-            const newRefreshToken = body.data.refreshToken;
             setTokens(newToken, newRefreshToken);
 
             // Mark original request as retried and set new Authorization header

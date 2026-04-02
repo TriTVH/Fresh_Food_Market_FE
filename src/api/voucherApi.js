@@ -28,3 +28,21 @@ export const fetchVoucherById = async (voucherId) => {
         throw error;
     }
 }
+
+/** POST /voucher — body theo Swagger */
+export const createVoucher = async (body) => {
+    const response = await axiosClient.post('/voucher', body);
+    return response;
+}
+
+/** PUT /voucher */
+export const updateVoucher = async (body) => {
+    const response = await axiosClient.put('/voucher', body);
+    return response;
+}
+
+/** DELETE /voucher/{id} */
+export const deleteVoucher = async (id) => {
+    const response = await axiosClient.delete(`/voucher/${id}`);
+    return response;
+}

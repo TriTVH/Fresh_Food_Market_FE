@@ -25,10 +25,12 @@ export function AuthProvider({ children }) {
         console.error('Failed to parse saved user:', error)
         localStorage.removeItem('freshmarket_user')
         localStorage.removeItem('authToken')
+        localStorage.removeItem('refreshToken')
       }
     } else {
         localStorage.removeItem('freshmarket_user')
         localStorage.removeItem('authToken')
+        localStorage.removeItem('refreshToken')
     }
     setIsLoading(false)
   }, [])
@@ -40,8 +42,22 @@ export function AuthProvider({ children }) {
         // Usually, Axios intercepts to response.data natively if configured, 
         // which gives us an object with `data`, `message`, `success`
         
-        if (response.success && response.data) {
-            const { token, role, username } = response.data;
+        const ok = response.success ?? response.Success
+        const payload = response.data ?? response.Data
+        if (ok && payload) {
+            const token =
+              payload.token ??
+              payload.accessToken ??
+              payload.access_token ??
+              payload.Token ??
+              payload.AccessToken
+            const refreshToken =
+              payload.refreshToken ??
+              payload.refresh_token ??
+              payload.RefreshToken
+            const role = payload.role ?? payload.Role
+            const username = payload.username ?? payload.Username ?? payload.userName
+
             const roleString = getRoleString(role);
             
             const user = {
@@ -50,14 +66,18 @@ export function AuthProvider({ children }) {
                 role: roleString
             };
             
-            // Save to state and storage
+            if (!token) {
+              return { success: false, error: response.message || response.Message || 'Login failed' };
+            }
+
             setCurrentUser(user);
             localStorage.setItem('freshmarket_user', JSON.stringify(user));
             localStorage.setItem('authToken', token);
-            
+            if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+
             return { success: true, user };
         } else {
-            return { success: false, error: response.message || 'Login failed' };
+            return { success: false, error: response.message || response.Message || 'Login failed' };
         }
     } catch (error) {
         return { success: false, error: error.message || 'Network error' };
@@ -69,6 +89,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('freshmarket_user')
 
     localStorage.removeItem('authToken')
+    localStorage.removeItem('refreshToken')
     localStorage.removeItem('freshmarket_cart') // Clear cart on logout
 
   }
